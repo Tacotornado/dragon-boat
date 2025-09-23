@@ -1,5 +1,5 @@
 #include <iostream>
-#include "filters.h"
+#include "utilities/filters.h"
 
 int main() {
     std::vector<double> acc_y = {0.1, 0.5, 0.9, 0.7, -0.2, -0.6, -0.9, -0.4, 0.0, 0.3};
