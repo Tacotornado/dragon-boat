@@ -2,105 +2,13 @@
 #include <filesystem>
 #include "matplotlibcpp.h"
 #include "filters.h"
+#include "signal_features.h"
+#include "stroke_metrics.h"
+#include "math_utils.h"
+#include <xlnt/xlnt.hpp>
 
 namespace plt = matplotlibcpp;
 namespace fs = std::filesystem;
-
-
-// ---- Utility functions ----
-double mean(const std::vector<double> &v) {
-    if (v.empty()) return 0.0;
-    return std::accumulate(v.begin(), v.end(), 0.0) / v.size();
-}
-
-double mean_abs_diff(const std::vector<double> &v) {
-    if (v.size() < 2) return 0.0;
-    double sum = 0.0;
-    for (size_t i = 1; i < v.size(); i++) sum += std::abs(v[i] - v[i-1]);
-    return sum / (v.size()-1);
-}
-
-double trapz(const std::vector<double> &y, double dx) {
-    if (y.size() < 2) return 0.0;
-    double s = 0.0;
-    for (size_t i = 1; i < y.size(); i++)
-        s += 0.5 * (y[i-1] + y[i]) * dx;
-    return s;
-}
-
-// ---- Peak detection with prominence ----
-std::vector<int> find_peaks_prominence(const std::vector<double> &sig, int distance, double prominence) {
-    std::vector<int> peaks;
-    for (int i = distance; i < (int)sig.size()-distance; i++) {
-        if (sig[i] > sig[i-1] && sig[i] > sig[i+1]) {
-            bool ok = true;
-            for (int j = 1; j <= distance; j++) {
-                if (sig[i] < sig[i-j] || sig[i] < sig[i+j]) { ok = false; break; }
-            }
-            if (!ok) continue;
-
-            double left_min = sig[i];
-            for (int j = i; j >= 0; j--) left_min = std::min(left_min, sig[j]);
-            double right_min = sig[i];
-            for (int j = i; j < (int)sig.size(); j++) right_min = std::min(right_min, sig[j]);
-            double prom = sig[i] - std::max(left_min, right_min);
-            if (prom >= prominence) peaks.push_back(i);
-        }
-    }
-    return peaks;
-}
-
-std::vector<int> find_peaks_prominence_neg(const std::vector<double> &sig, int distance, double prominence) {
-    std::vector<int> peaks;
-    for (int i = distance; i < (int)sig.size()-distance; i++) {
-        if (sig[i] < sig[i-1] && sig[i] < sig[i+1]) {
-            bool ok = true;
-            for (int j = 1; j <= distance; j++) {
-                if (sig[i] > sig[i-j] || sig[i] > sig[i+j]) { ok = false; break; }
-            }
-            if (!ok) continue;
-
-            double left_max = sig[i];
-            for (int j = i; j >= 0; j--) left_max = std::max(left_max, sig[j]);
-            double right_max = sig[i];
-            for (int j = i; j < (int)sig.size(); j++) right_max = std::max(right_max, sig[j]);
-            double prom = std::min(left_max, right_max) - sig[i];
-            if (prom >= prominence) peaks.push_back(i);
-        }
-    }
-    return peaks;
-}
-
-// ---- Zero crossing detection ----
-std::vector<int> find_all_zero_crossings(const std::vector<double> &sig,
-                                         double min_amp, int window,
-                                         double slope_thr, int min_spacing,
-                                         double hysteresis) {
-    std::vector<int> zeros;
-    int last_z = -min_spacing;
-    auto sign = [&](double x){ return (x > hysteresis) - (x < -hysteresis); };
-
-    for (int i = 1; i < (int)sig.size(); i++) {
-        int s_prev = sign(sig[i-1]);
-        int s_curr = sign(sig[i]);
-        if (s_prev == 0) s_prev = sign(sig[i-2 >= 0 ? i-2 : 0]); // stabilize near flat zero
-        if (s_prev != 0 && s_curr != 0 && s_prev != s_curr) {
-            double slope = sig[i] - sig[i-1];
-            int lo = std::max(0, i-window);
-            int hi = std::min((int)sig.size(), i+window);
-            double local_max = *std::max_element(sig.begin()+lo, sig.begin()+hi);
-            double local_min = *std::min_element(sig.begin()+lo, sig.begin()+hi);
-            if ((local_max - local_min) > min_amp && std::abs(slope) > slope_thr) {
-                if (i - last_z >= min_spacing) {
-                    zeros.push_back(i);
-                    last_z = i;
-                }
-            }
-        }
-    }
-    return zeros;
-}
-
 
 // ---- StrokeCycle struct ----
 struct StrokeCycle {
@@ -108,6 +16,41 @@ struct StrokeCycle {
     int StartZero, PosPeak, MidZero, NegPeak, EndZero;
     double TotalTime, TimeToPosPeak, TimeToNegPeak;
     double Area_Positive, Area_Negative;
+};
+
+struct AccPhaseMetrics {
+    int StrokeID;
+    double Duration;
+    double AccY_PosPeak;
+    double TimeToPosPeakPercent;
+    double RAD;
+    double VelocityChange;
+    double MeanAbsAccX;
+    double MeanAbsGyrX;
+    double MeanAbsGyrY;
+    double MeanAbsGyrZ;
+};
+
+struct DecPhaseMetrics {
+    int StrokeID;
+    double Duration;
+    double AccY_NegPeak;
+    double TimeToNegPeakPercent;
+    double VelocityChange;
+    double MeanAbsAccX;
+    double MeanAbsGyrX;
+    double MeanAbsGyrY;
+    double MeanAbsGyrZ;
+};
+
+struct StrokePhaseMetrics {
+    int StrokeID;
+    double GyrX_PosPeak;
+    double GyrX_NegPeak;
+    double MeanAbsAccX;
+    double MeanAbsGyrX;
+    double MeanAbsGyrY;
+    double MeanAbsGyrZ;
 };
 
 int main() {
@@ -130,94 +73,273 @@ int main() {
         std::vector<std::string> headers;
         while (std::getline(ss, col, ',')) headers.push_back(col);
 
-        // Find Acc_Y column
-        int idx_AccY = -1;
-        for (size_t i = 0; i < headers.size(); i++) {
-            if (headers[i] == "Acc_Y") { idx_AccY = (int)i; break; }
-        }
+        // --- Find column indices ---
+        auto find_idx = [&](const std::string &name) {
+            for (size_t i = 0; i < headers.size(); ++i)
+                if (headers[i] == name) return (int)i;
+            return -1;
+        };
+
+        int idx_AccX = find_idx("Acc_X");
+        int idx_AccY = find_idx("Acc_Y");
+        int idx_GyrX = find_idx("Gyr_X");
+        int idx_GyrY = find_idx("Gyr_Y");
+        int idx_GyrZ = find_idx("Gyr_Z");
+
         if (idx_AccY < 0) {
             std::cerr << "Acc_Y column not found!\n";
             return 1;
         }
 
-        // Read Acc_Y values
-        std::vector<double> acc_y;
+        // --- Declare all channel vectors ---
+        std::vector<double> accX, acc_y, gyrX, gyrY, gyrZ;
+
+
+        // Read CSV rows and load full columns
         while (std::getline(fin, line)) {
             std::stringstream row(line);
             std::string cell;
             int col_index = 0;
+            std::vector<std::string> row_cells;
             while (std::getline(row, cell, ',')) {
-                if (col_index == idx_AccY) {
-                    try { acc_y.push_back(std::stod(cell)); }
-                    catch (...) { acc_y.push_back(0.0); }
-                    break;
-                }
-                col_index++;
+                row_cells.push_back(cell);
             }
+            // guard number of columns
+            if ((int)row_cells.size() <= std::max({idx_AccX, idx_AccY, idx_GyrX, idx_GyrY, idx_GyrZ})) {
+                // row too short; push zeros or skip
+                accX.push_back(0.0);
+                acc_y.push_back(0.0);
+                gyrX.push_back(0.0);
+                gyrY.push_back(0.0);
+                gyrZ.push_back(0.0);
+                continue;
+            }
+            auto toD = [&](int idx){
+                try { return std::stod(row_cells[idx]); }
+                catch(...) { return 0.0; }
+            };
+            accX.push_back(toD(idx_AccX));
+            acc_y.push_back(toD(idx_AccY));
+            gyrX.push_back(toD(idx_GyrX));
+            gyrY.push_back(toD(idx_GyrY));
+            gyrZ.push_back(toD(idx_GyrZ));
         }
-        fin.close();
-        std::cout << "Loaded samples: " << acc_y.size() << "\n";
 
-        // --- Filtering ---
-        double fs_rate = 120.0; // Hz
-        double cutoff = 10.0;   // Hz
-        ButterworthLowpass lp_filter(cutoff, fs_rate, 2);
-        auto acc_y_smooth = lp_filter.apply(acc_y);
+            // --- Filtering ---
+            double fs_rate = 120.0; // Hz
+            double cutoff = 10.0;   // Hz
+            ButterworthLowpass lp_filter(cutoff, fs_rate, 2);
+            auto acc_y_smooth = lp_filter.apply(acc_y);
 
-        // --- Peaks ---
-        auto pos_peaks = find_peaks_prominence(acc_y_smooth, 5, 0.02);
-        auto neg_peaks = find_peaks_prominence_neg(acc_y_smooth, 5, 0.02);
-        
+            // --- Peaks ---
+            auto pos_peaks = find_peaks_prominence(acc_y_smooth, 5, 0.02);
+            auto neg_peaks = find_peaks_prominence_neg(acc_y_smooth, 5, 0.02);
+            
 
-        std::cout << "Pos peaks: " << pos_peaks.size() << " Neg peaks: " << neg_peaks.size() << "\n";
+            std::cout << "Pos peaks: " << pos_peaks.size() << " Neg peaks: " << neg_peaks.size() << "\n";
 
-        // --- Zero crossings ---
-        auto all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
-        std::cout << "Zero crossings: " << all_zeros.size() << "\n";
+            // --- Zero crossings ---
+            auto all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
+            std::cout << "Zero crossings: " << all_zeros.size() << "\n";
 
-        // --- Stroke cycles ---
-        std::vector<StrokeCycle> stroke_cycles;
-        for (size_t i = 0; i + 2 < all_zeros.size(); i++) {   // fix guard: need z1,z2,z3
-            int z1 = all_zeros[i];
-            int z2 = all_zeros[i+1];
-            int z3 = all_zeros[i+2];
+            // --- Stroke cycles ---
+            std::vector<StrokeCycle> stroke_cycles;
+            std::vector<AccPhaseMetrics> acc_metrics;
+            std::vector<DecPhaseMetrics> dec_metrics;
+            std::vector<StrokePhaseMetrics> stroke_phase_metrics;
 
-            // Find peaks separately in each half
-            std::vector<int> pos_in_first, neg_in_second;
-            for (int p : pos_peaks) if (p > z1 && p < z2) pos_in_first.push_back(p);
-            for (int p : neg_peaks) if (p > z2 && p < z3) neg_in_second.push_back(p);
+        // --- Stroke cycles (fixed) ---
+for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
+    int z1 = all_zeros[i];
+    int z2 = all_zeros[i+1];
+    int z3 = all_zeros[i+2];
 
-            if (pos_in_first.empty() || neg_in_second.empty()) continue;
+    // Find positive peaks inside [z1, z2)
+    std::vector<int> pos_in_first;
+    for (int p : pos_peaks)
+        if (p > z1 && p < z2) pos_in_first.push_back(p);
 
-            // Strongest positive in first half
-            int pos_idx = *std::max_element(pos_in_first.begin(), pos_in_first.end(),
-                [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
-            // Strongest negative in second half
-            int neg_idx = *std::min_element(neg_in_second.begin(), neg_in_second.end(),
-                [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
+    // Find negative peaks inside (z2, z3]
+    std::vector<int> neg_in_second;
+    for (int p : neg_peaks)
+        if (p > z2 && p < z3) neg_in_second.push_back(p);
 
-            // Sanity: signs
-            if (acc_y_smooth[pos_idx] <= 0 || acc_y_smooth[neg_idx] >= 0) continue;
+    if (pos_in_first.empty() || neg_in_second.empty()) continue;
 
-            double t_total = (z3 - z1)/fs_rate;
-            double t_pos   = (pos_idx - z1)/fs_rate;
-            double t_neg   = (neg_idx - z2)/fs_rate;
+    // strongest positive in first half (index of sample)
+    int pos_idx = *std::max_element(pos_in_first.begin(), pos_in_first.end(),
+        [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
 
-            // Areas: strict halves
-            std::vector<double> segpos, segneg;
-            segpos.reserve(z2 - z1 + 1);
-            segneg.reserve(z3 - z2 + 1);
-            for (int k = z1; k <= z2; k++) segpos.push_back(std::max(0.0, acc_y_smooth[k]));
-            for (int k = z2; k <= z3; k++) segneg.push_back(std::min(0.0, acc_y_smooth[k]));
-            double pos_area     = trapz(segpos, 1.0/fs_rate);
-            double neg_area_mag = std::abs(trapz(segneg, 1.0/fs_rate));
+    // strongest negative in second half (index of sample)
+    int neg_idx = *std::min_element(neg_in_second.begin(), neg_in_second.end(),
+        [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
 
-            stroke_cycles.push_back({(int)stroke_cycles.size()+1, z1,pos_idx,z2,neg_idx,z3,
-                                    t_total,t_pos,t_neg,pos_area,neg_area_mag});
-        }
+    // sanity check on sign
+    if (acc_y_smooth[pos_idx] <= 0 || acc_y_smooth[neg_idx] >= 0) continue;
+
+    auto timing = computeTiming(z1, pos_idx, z2, neg_idx, z3, fs_rate);
+
+    // compute areas using trapezoid helper
+    std::vector<double> segpos, segneg;
+    for (int k = z1; k <= z2; ++k) segpos.push_back(std::max(0.0, acc_y_smooth[k]));
+    for (int k = z2; k <= z3; ++k) segneg.push_back(std::min(0.0, acc_y_smooth[k]));
+    double pos_area     = trapz(segpos, 1.0/fs_rate);
+    double neg_area_mag = std::abs(trapz(segneg, 1.0/fs_rate));
+
+    // assign StrokeID based on number of strokes already collected
+    StrokeCycle sc{
+        (int)stroke_cycles.size() + 1, // StrokeID
+        z1, pos_idx, z2, neg_idx, z3,
+        timing.totalTime, timing.timeToPosPeak, timing.timeToNegPeak,
+        pos_area, neg_area_mag
+    };
+
+    // push the stroke cycle now (so we can safely reference 'sc' later)
+    stroke_cycles.push_back(sc);
+
+    // === compute phase metrics using sc (use stroke_cycles.back() if you prefer) ===
+    // after stroke_cycles.push_back(sc);
+{
+    const StrokeCycle &last = stroke_cycles.back();
+    int sid = last.StrokeID;
+    int z1 = last.StartZero;
+    int z2 = last.MidZero; // mid zero
+    int z3 = last.EndZero;
+
+    // --- Acceleration phase ---
+    double dur_acc = (z2 - z1) / fs_rate;
+    double accY_peak = acc_y_smooth[last.PosPeak];
+    double time_to_peak = (last.PosPeak - z1) / fs_rate;
+    double percent_time = (time_to_peak / std::max(1e-12, dur_acc)) * 100.0;
+    double RAD = accY_peak / std::max(1e-12, time_to_peak);
+    double vel_change_acc = trapz(std::vector<double>(acc_y_smooth.begin()+z1, acc_y_smooth.begin()+z2), 1.0/fs_rate);
+
+    double mean_abs_accx_acc = mean_abs_diff(std::vector<double>(accX.begin()+z1, accX.begin()+z2));
+    double mean_abs_gyx_acc  = mean_abs_diff(std::vector<double>(gyrX.begin()+z1, gyrX.begin()+z2));
+    double mean_abs_gyy_acc  = mean_abs_diff(std::vector<double>(gyrY.begin()+z1, gyrY.begin()+z2));
+    double mean_abs_gyz_acc  = mean_abs_diff(std::vector<double>(gyrZ.begin()+z1, gyrZ.begin()+z2));
+
+    acc_metrics.push_back({
+        sid, dur_acc, accY_peak, percent_time, RAD, vel_change_acc,
+        mean_abs_accx_acc, mean_abs_gyx_acc, mean_abs_gyy_acc, mean_abs_gyz_acc
+    });
+
+    // --- Deceleration phase ---
+    double dur_dec = (z3 - z2) / fs_rate;
+    double accY_negpeak = acc_y_smooth[last.NegPeak];
+    double time_to_neg = (last.NegPeak - z2) / fs_rate;
+    double percent_neg_time = (time_to_neg / std::max(1e-12, dur_dec)) * 100.0;
+    double vel_change_dec = trapz(std::vector<double>(acc_y_smooth.begin()+z2, acc_y_smooth.begin()+z3), 1.0/fs_rate);
+
+    double mean_abs_accx_dec = mean_abs_diff(std::vector<double>(accX.begin()+z2, accX.begin()+z3));
+    double mean_abs_gyx_dec  = mean_abs_diff(std::vector<double>(gyrX.begin()+z2, gyrX.begin()+z3));
+    double mean_abs_gyy_dec  = mean_abs_diff(std::vector<double>(gyrY.begin()+z2, gyrY.begin()+z3));
+    double mean_abs_gyz_dec  = mean_abs_diff(std::vector<double>(gyrZ.begin()+z2, gyrZ.begin()+z3));
+
+    dec_metrics.push_back({
+        sid, dur_dec, accY_negpeak, percent_neg_time, vel_change_dec,
+        mean_abs_accx_dec, mean_abs_gyx_dec, mean_abs_gyy_dec, mean_abs_gyz_dec
+    });
+
+    // --- Stroke phase (acc+dec) ---
+    auto gyrx_slice = std::vector<double>(gyrX.begin()+z1, gyrX.begin()+z3);
+    double gyrx_pos_peak = *std::max_element(gyrx_slice.begin(), gyrx_slice.end());
+    double gyrx_neg_peak = *std::min_element(gyrx_slice.begin(), gyrx_slice.end());
+    double mean_abs_accx_stroke = mean_abs_diff(std::vector<double>(accX.begin()+z1, accX.begin()+z3));
+    double mean_abs_gyx_stroke  = mean_abs_diff(std::vector<double>(gyrX.begin()+z1, gyrX.begin()+z3));
+    double mean_abs_gyy_stroke  = mean_abs_diff(std::vector<double>(gyrY.begin()+z1, gyrY.begin()+z3));
+    double mean_abs_gyz_stroke  = mean_abs_diff(std::vector<double>(gyrZ.begin()+z1, gyrZ.begin()+z3));
+
+    stroke_phase_metrics.push_back({
+        sid, gyrx_pos_peak, gyrx_neg_peak,
+        mean_abs_accx_stroke, mean_abs_gyx_stroke,
+        mean_abs_gyy_stroke, mean_abs_gyz_stroke
+    });
+}
+}
 
         std::cout << "Saved " << stroke_cycles.size() << " stroke cycles\n";
         
+        xlnt::workbook wb;
+
+        // --- Sheet 1: Acceleration Phase ---
+        auto ws1 = wb.active_sheet();
+        ws1.title("Acceleration Phase");
+
+        // Header row
+        std::vector<std::string> headers1 = {
+            "StrokeID","Duration","ACC-Y+Peak","TimeToPeak(%)","RAD",
+            "ΔVelocity","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
+        };
+        for (size_t i = 0; i < headers1.size(); ++i)
+            ws1.cell(1, i + 1).value(headers1[i]);
+
+        // Data rows
+        int row = 2;
+        for (auto &m : acc_metrics) {
+            ws1.cell(row, 1).value(m.StrokeID);
+            ws1.cell(row, 2).value(m.Duration);
+            ws1.cell(row, 3).value(m.AccY_PosPeak);
+            ws1.cell(row, 4).value(m.TimeToPosPeakPercent);
+            ws1.cell(row, 5).value(m.RAD);
+            ws1.cell(row, 6).value(m.VelocityChange);
+            ws1.cell(row, 7).value(m.MeanAbsAccX);
+            ws1.cell(row, 8).value(m.MeanAbsGyrX);
+            ws1.cell(row, 9).value(m.MeanAbsGyrY);
+            ws1.cell(row, 10).value(m.MeanAbsGyrZ);
+            ++row;
+        }
+
+
+        // --- Sheet 2: Deceleration Phase ---
+        auto ws2 = wb.create_sheet();
+        ws2.title("Deceleration Phase");
+        std::vector<std::string> headers2 = {
+            "StrokeID","Duration","ACC-Y−Peak","TimeToNegPeak(%)",
+            "ΔVelocity","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
+        };
+        for (size_t i = 0; i < headers2.size(); ++i)
+            ws2.cell(1, i + 1).value(headers2[i]);
+
+        int r2 = 2;
+        for (auto &m : dec_metrics) {
+            ws2.cell(r2, 1).value(m.StrokeID);
+            ws2.cell(r2, 2).value(m.Duration);
+            ws2.cell(r2, 3).value(m.AccY_NegPeak);
+            ws2.cell(r2, 4).value(m.TimeToNegPeakPercent);
+            ws2.cell(r2, 5).value(m.VelocityChange);
+            ws2.cell(r2, 6).value(m.MeanAbsAccX);
+            ws2.cell(r2, 7).value(m.MeanAbsGyrX);
+            ws2.cell(r2, 8).value(m.MeanAbsGyrY);
+            ws2.cell(r2, 9).value(m.MeanAbsGyrZ);
+            ++r2;
+        }
+
+
+        // --- Sheet 3: Stroke Phase ---
+        auto ws3 = wb.create_sheet();
+        ws3.title("Stroke Phase");
+        std::vector<std::string> headers3 = {
+            "StrokeID","GyrX+Peak","GyrX−Peak","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
+        };
+        for (size_t i = 0; i < headers3.size(); ++i)
+            ws3.cell(1, i + 1).value(headers3[i]);
+
+        int r3 = 2;
+        for (auto &m : stroke_phase_metrics) {
+            ws3.cell(r3, 1).value(m.StrokeID);
+            ws3.cell(r3, 2).value(m.GyrX_PosPeak);
+            ws3.cell(r3, 3).value(m.GyrX_NegPeak);
+            ws3.cell(r3, 4).value(m.MeanAbsAccX);
+            ws3.cell(r3, 5).value(m.MeanAbsGyrX);
+            ws3.cell(r3, 6).value(m.MeanAbsGyrY);
+            ws3.cell(r3, 7).value(m.MeanAbsGyrZ);
+            ++r3;
+        }
+
+
+        wb.save("results_full_strokes_A/stroke_phase_metrics.xlsx");
+
         // --- Individual stroke plots ---
         for (auto &sc : stroke_cycles) {
             // Extract segment
@@ -236,17 +358,17 @@ int main() {
             int pos_rel = sc.PosPeak - sc.StartZero;
             plt::plot({(double)pos_rel}, {acc_y_smooth[sc.PosPeak]}, "ro");
 
-            // Mark mid zero
+            // Mark mid zero at its actual sample value
             int mid_rel = sc.MidZero - sc.StartZero;
-            plt::plot({(double)mid_rel}, {0.0}, "kx");
+            plt::plot({(double)mid_rel}, {acc_y_smooth[sc.MidZero]}, "kx");
+
+            // Mark start and end zeros at their actual sample values
+            plt::plot({0.0}, {acc_y_smooth[sc.StartZero]}, "kx");
+            plt::plot({(double)(sc.EndZero - sc.StartZero)}, {acc_y_smooth[sc.EndZero]}, "kx");
 
             // Mark negative peak
             int neg_rel = sc.NegPeak - sc.StartZero;
             plt::plot({(double)neg_rel}, {acc_y_smooth[sc.NegPeak]}, "bv");
-
-            // Mark start and end zeros
-            plt::plot({0.0}, {0.0}, "kx");
-            plt::plot({(double)(sc.EndZero - sc.StartZero)}, {0.0}, "kx");
 
             plt::title("Stroke " + std::to_string(sc.StrokeID));
             plt::xlabel("Sample offset");
@@ -287,13 +409,14 @@ int main() {
         std::vector<double> zero_x, zero_y;
         for (int z : all_zeros) {
             zero_x.push_back((double)z);
-            zero_y.push_back(0.0);  // mark on x-axis
+            zero_y.push_back(acc_y_smooth[z]);  // use the sample value closest to zero
         }
-        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); // black 'x' marks
+        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); // black 'x' marks at the real values
 
         plt::title("Detected stroke cycles");
         plt::xlabel("Sample index");
         plt::ylabel("Acc_Y");
+
         plt::save(RESULT_DIR+"/strokes_overview.png");
         plt::close();
 
