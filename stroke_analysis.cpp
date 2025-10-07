@@ -7,7 +7,10 @@
 #include "stroke_metrics.h"
 #include "math_utils.h"
 #include <xlnt/xlnt.hpp>
+<<<<<<< HEAD
 #include "cxxopts.hpp"
+=======
+>>>>>>> a71cc14 (Commit of project)
 
 namespace plt = matplotlibcpp;
 namespace fs = std::filesystem;
@@ -55,7 +58,11 @@ struct StrokePhaseMetrics {
     double MeanAbsGyrZ;
 };
 
+<<<<<<< HEAD
 int main(int argc, char* argv[]) {
+=======
+int main() {
+>>>>>>> a71cc14 (Commit of project)
     try {
         // defining available options //
         cxxopts::Options options("Stroke Analysis", "Analyze dragon boat stroke data from Xsens CSV");
@@ -98,9 +105,12 @@ int main(int argc, char* argv[]) {
             return -1;
         };
 
+<<<<<<< HEAD
         std::cout << "Columns found: " << headers.size() << "from CSV: " << csv_path << "\n";
         std::cout << "Results being stored to: " << RESULT_DIR << "\n";
 
+=======
+>>>>>>> a71cc14 (Commit of project)
         int idx_AccX = find_idx("Acc_X");
         int idx_AccY = find_idx("Acc_Y");
         int idx_GyrX = find_idx("Gyr_X");
@@ -127,6 +137,13 @@ int main(int argc, char* argv[]) {
             }
             // guard number of columns
             if ((int)row_cells.size() <= std::max({idx_AccX, idx_AccY, idx_GyrX, idx_GyrY, idx_GyrZ})) {
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+                // row too short; push zeros or skip
+>>>>>>> a71cc14 (Commit of project)
+=======
+>>>>>>> bbc01cf (Clean)
                 accX.push_back(0.0);
                 acc_y.push_back(0.0);
                 gyrX.push_back(0.0);
@@ -147,7 +164,15 @@ int main(int argc, char* argv[]) {
 
             // --- Filtering ---
             double fs_rate = 120.0; // Hz
+<<<<<<< HEAD
+<<<<<<< HEAD
             double cutoff = 5.0;   // Hz
+=======
+            double cutoff = 10.0;   // Hz
+>>>>>>> a71cc14 (Commit of project)
+=======
+            double cutoff = 5.0;   // Hz
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
             ButterworthLowpass lp_filter(cutoff, fs_rate, 2);
             auto acc_y_smooth = lp_filter.apply(acc_y);
 
@@ -158,8 +183,18 @@ int main(int argc, char* argv[]) {
 
             std::cout << "Pos peaks: " << pos_peaks.size() << " Neg peaks: " << neg_peaks.size() << "\n";
 
+<<<<<<< HEAD
+<<<<<<< HEAD
             // --- Zero crossings (fractional positions) ---
             std::vector<double> all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
+=======
+            // --- Zero crossings ---
+            auto all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
+>>>>>>> a71cc14 (Commit of project)
+=======
+            // --- Zero crossings (fractional positions) ---
+            std::vector<double> all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
             std::cout << "Zero crossings: " << all_zeros.size() << "\n";
 
             // --- Stroke cycles ---
@@ -167,6 +202,7 @@ int main(int argc, char* argv[]) {
             std::vector<AccPhaseMetrics> acc_metrics;
             std::vector<DecPhaseMetrics> dec_metrics;
             std::vector<StrokePhaseMetrics> stroke_phase_metrics;
+<<<<<<< HEAD
     
 
 // --- Stroke cycles (using fractional zeros for timing, integer indices for slicing) ---
@@ -252,6 +288,96 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     int sid = last.StrokeID;
 
     // Acceleration phase
+=======
+
+// --- Stroke cycles (using fractional zeros for timing, integer indices for slicing) ---
+for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
+    double z1d = all_zeros[i];
+    double z2d = all_zeros[i+1];
+    double z3d = all_zeros[i+2];
+
+    // integer bounds for slicing / peak search 
+    int z1 = std::max(0, (int)std::floor(z1d));
+    int z2 = std::min((int)acc_y_smooth.size()-1, (int)std::round(z2d));
+    int z3 = std::min((int)acc_y_smooth.size()-1, (int)std::ceil(z3d));
+
+    if (z1 >= z2 || z2 >= z3) continue;
+
+    // Find positive peaks inside (z1, z2)
+    std::vector<double> pos_in_first;
+    for (double p : pos_peaks)
+        if (p > z1 && p < z2)
+            pos_in_first.push_back((int)std::round(p));
+
+    // Find negative peaks inside (z2, z3)
+    std::vector<double> neg_in_second;
+    for (double p : neg_peaks)
+        if (p > z2 && p < z3)
+            neg_in_second.push_back((int)std::round(p));
+
+
+    if (pos_in_first.empty() || neg_in_second.empty()) continue;
+
+    // strongest positive in first half
+    int pos_idx = *std::max_element(pos_in_first.begin(), pos_in_first.end(),
+        [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
+
+    // strongest negative in second half
+    int neg_idx = *std::min_element(neg_in_second.begin(), neg_in_second.end(),
+        [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
+
+    if (acc_y_smooth[pos_idx] <= 0 || acc_y_smooth[neg_idx] >= 0) continue;
+
+    // --- Timing using fractional zero positions (higher precision) ---
+    double totalTime = (z3d - z1d) / fs_rate;
+    double timeToPosPeak = (pos_idx - z1d) / fs_rate;
+    double timeToNegPeak = (neg_idx - z2d) / fs_rate;
+
+    // Compute areas using fractional zero crossings 
+    auto slice_with_fractional = [&](double start, double end) {
+        std::vector<double> x, y;
+        int i_start = (int)std::floor(start);
+        int i_end   = (int)std::ceil(end);
+
+        for (int k = i_start; k <= i_end; ++k) {
+            double xi = k;
+            double yi = interp_at(acc_y_smooth, xi);  // fractional y interpolation
+            x.push_back(xi);
+            y.push_back(yi);
+        }
+        return std::make_pair(x, y);
+    };
+
+    // Positive area (z1d → z2d)
+    auto [x_pos, y_pos] = slice_with_fractional(z1d, z2d);
+    for (double &v : y_pos) v = std::max(0.0, v);
+    double pos_area = trapz(y_pos, 1.0/fs_rate);
+
+    // Negative area (z2d → z3d)
+    auto [x_neg, y_neg] = slice_with_fractional(z2d, z3d);
+    for (double &v : y_neg) v = std::min(0.0, v);
+    double neg_area_mag = std::abs(trapz(y_neg, 1.0/fs_rate));
+
+    // assign StrokeID and use integer indices for Start/Mid/End to preserve current downstream logic
+    StrokeCycle sc{
+        (int)stroke_cycles.size() + 1,
+        z1, pos_idx, z2, neg_idx, z3,
+        totalTime, timeToPosPeak, timeToNegPeak,
+        pos_area, neg_area_mag
+    };
+
+    stroke_cycles.push_back(sc);
+
+    // --- compute metrics as before; use integer z1,z2,z3 for slicing
+    const StrokeCycle &last = stroke_cycles.back();
+    int sid = last.StrokeID;
+
+<<<<<<< HEAD
+    // --- Acceleration phase ---
+>>>>>>> a71cc14 (Commit of project)
+=======
+    // Acceleration phase
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
     double dur_acc = (z2 - z1) / fs_rate;
     double accY_peak = acc_y_smooth[last.PosPeak];
     double time_to_peak = (last.PosPeak - z1) / fs_rate;
@@ -269,7 +395,15 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         mean_abs_accx_acc, mean_abs_gyx_acc, mean_abs_gyy_acc, mean_abs_gyz_acc
     });
 
+<<<<<<< HEAD
+<<<<<<< HEAD
     // Deceleration phase
+=======
+    // --- Deceleration phase ---
+>>>>>>> a71cc14 (Commit of project)
+=======
+    // Deceleration phase
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
     double dur_dec = (z3 - z2) / fs_rate;
     double accY_negpeak = acc_y_smooth[last.NegPeak];
     double time_to_neg = (last.NegPeak - z2) / fs_rate;
@@ -286,7 +420,15 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         mean_abs_accx_dec, mean_abs_gyx_dec, mean_abs_gyy_dec, mean_abs_gyz_dec
     });
 
+<<<<<<< HEAD
+<<<<<<< HEAD
     // Stroke phase metrics 
+=======
+    // --- Stroke phase (acc+dec) ---
+>>>>>>> a71cc14 (Commit of project)
+=======
+    // Stroke phase metrics 
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
     auto gyrx_slice = std::vector<double>(gyrX.begin()+z1, gyrX.begin()+z3);
     double gyrx_pos_peak = *std::max_element(gyrx_slice.begin(), gyrx_slice.end());
     double gyrx_neg_peak = *std::min_element(gyrx_slice.begin(), gyrx_slice.end());
@@ -296,16 +438,33 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     double mean_abs_gyz_stroke  = mean_abs_diff(std::vector<double>(gyrZ.begin()+z1, gyrZ.begin()+z3));
 
     stroke_phase_metrics.push_back({
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
     sid, gyrx_pos_peak, gyrx_neg_peak,
     mean_abs_accx_stroke, mean_abs_gyx_stroke,
     mean_abs_gyy_stroke, mean_abs_gyz_stroke
 });
 } 
 
+<<<<<<< HEAD
+=======
+        sid, gyrx_pos_peak, gyrx_neg_peak,
+        mean_abs_accx_stroke, mean_abs_gyx_stroke,
+        mean_abs_gyy_stroke, mean_abs_gyz_stroke
+    });
+}
+}
+>>>>>>> a71cc14 (Commit of project)
+=======
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
 
         std::cout << "Saved " << stroke_cycles.size() << " stroke cycles\n";
         
         xlnt::workbook wb;
+<<<<<<< HEAD
+=======
 
         // --- Sheet 1: Acceleration Phase ---
         auto ws1 = wb.active_sheet();
@@ -380,6 +539,101 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         }
 
 
+        wb.save("results_full_strokes_A/stroke_phase_metrics.xlsx");
+
+        // --- Individual stroke plots ---
+        for (auto &sc : stroke_cycles) {
+            // Extract segment
+            std::vector<double> seg;
+            for (int k = sc.StartZero; k <= sc.EndZero; k++)
+                seg.push_back(acc_y_smooth[k]);
+>>>>>>> a71cc14 (Commit of project)
+
+<<<<<<< HEAD
+        // --- Sheet 1: Acceleration Phase ---
+        auto ws1 = wb.active_sheet();
+        ws1.title("Acceleration Phase");
+
+        std::vector<std::string> headers1 = {
+            "StrokeID","Duration","ACC-Y+Peak","TimeToPeak(%)","RAD",
+            "ΔVelocity","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
+        };
+        for (size_t i = 0; i < headers1.size(); ++i)
+            ws1.cell(1, i + 1).value(headers1[i]);
+
+        int row = 2;
+        for (auto &m : acc_metrics) {
+            ws1.cell(row, 1).value(m.StrokeID);
+            ws1.cell(row, 2).value(m.Duration);
+            ws1.cell(row, 3).value(m.AccY_PosPeak);
+            ws1.cell(row, 4).value(m.TimeToPosPeakPercent);
+            ws1.cell(row, 5).value(m.RAD);
+            ws1.cell(row, 6).value(m.VelocityChange);
+            ws1.cell(row, 7).value(m.MeanAbsAccX);
+            ws1.cell(row, 8).value(m.MeanAbsGyrX);
+            ws1.cell(row, 9).value(m.MeanAbsGyrY);
+            ws1.cell(row, 10).value(m.MeanAbsGyrZ);
+            ++row;
+        }
+
+<<<<<<< HEAD
+        // --- Sheet 2: Deceleration Phase ---
+        auto ws2 = wb.create_sheet();
+        ws2.title("Deceleration Phase");
+        std::vector<std::string> headers2 = {
+            "StrokeID","Duration","ACC-Y−Peak","TimeToNegPeak(%)",
+            "ΔVelocity","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
+        };
+        for (size_t i = 0; i < headers2.size(); ++i)
+            ws2.cell(1, i + 1).value(headers2[i]);
+=======
+            // Mark mid zero at its actual sample value
+            int mid_rel = sc.MidZero - sc.StartZero;
+            plt::plot({(double)mid_rel}, {acc_y_smooth[sc.MidZero]}, "kx");
+
+            // Mark start and end zeros at their actual sample values
+            plt::plot({0.0}, {acc_y_smooth[sc.StartZero]}, "kx");
+            plt::plot({(double)(sc.EndZero - sc.StartZero)}, {acc_y_smooth[sc.EndZero]}, "kx");
+>>>>>>> a71cc14 (Commit of project)
+
+        int r2 = 2;
+        for (auto &m : dec_metrics) {
+            ws2.cell(r2, 1).value(m.StrokeID);
+            ws2.cell(r2, 2).value(m.Duration);
+            ws2.cell(r2, 3).value(m.AccY_NegPeak);
+            ws2.cell(r2, 4).value(m.TimeToNegPeakPercent);
+            ws2.cell(r2, 5).value(m.VelocityChange);
+            ws2.cell(r2, 6).value(m.MeanAbsAccX);
+            ws2.cell(r2, 7).value(m.MeanAbsGyrX);
+            ws2.cell(r2, 8).value(m.MeanAbsGyrY);
+            ws2.cell(r2, 9).value(m.MeanAbsGyrZ);
+            ++r2;
+        }
+
+<<<<<<< HEAD
+
+        // --- Sheet 3: Stroke Phase ---
+        auto ws3 = wb.create_sheet();
+        ws3.title("Stroke Phase");
+        std::vector<std::string> headers3 = {
+            "StrokeID","GyrX+Peak","GyrX−Peak","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
+        };
+        for (size_t i = 0; i < headers3.size(); ++i)
+            ws3.cell(1, i + 1).value(headers3[i]);
+
+        int r3 = 2;
+        for (auto &m : stroke_phase_metrics) {
+            ws3.cell(r3, 1).value(m.StrokeID);
+            ws3.cell(r3, 2).value(m.GyrX_PosPeak);
+            ws3.cell(r3, 3).value(m.GyrX_NegPeak);
+            ws3.cell(r3, 4).value(m.MeanAbsAccX);
+            ws3.cell(r3, 5).value(m.MeanAbsGyrX);
+            ws3.cell(r3, 6).value(m.MeanAbsGyrY);
+            ws3.cell(r3, 7).value(m.MeanAbsGyrZ);
+            ++r3;
+        }
+
+
         wb.save(RESULT_DIR + "/stroke_phase_metrics.xlsx");
 
         // --- Individual stroke plots (start & end exactly at zero crossings) ---
@@ -414,6 +668,30 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
             plt::title("Stroke " + std::to_string(sc.StrokeID) +
                     " [zero: " + std::to_string(z1d) + " → " + std::to_string(z3d) + "]");
             plt::xlabel("Sample index");
+=======
+            plt::title("Stroke " + std::to_string(sc.StrokeID));
+            plt::xlabel("Sample offset");
+>>>>>>> a71cc14 (Commit of project)
+=======
+            // X-axis uses actual sample indices
+            std::vector<double> x(seg.size());
+            std::iota(x.begin(), x.end(), sc.StartZero);  // start from actual index
+
+            plt::figure_size(800, 400);
+            plt::plot(x, seg, "b-");
+
+            // Mark key points using actual sample indices
+            plt::plot({(double)sc.StartZero}, {acc_y_smooth[sc.StartZero]}, "kx"); // start
+            plt::plot({(double)sc.MidZero},   {acc_y_smooth[sc.MidZero]},   "kx"); // mid
+            plt::plot({(double)sc.EndZero},   {acc_y_smooth[sc.EndZero]},   "kx"); // end
+            plt::plot({(double)sc.PosPeak},   {acc_y_smooth[sc.PosPeak]},   "ro"); // pos peak
+            plt::plot({(double)sc.NegPeak},   {acc_y_smooth[sc.NegPeak]},   "bv"); // neg peak
+
+            plt::title("Stroke " + std::to_string(sc.StrokeID) + 
+                    "  [" + std::to_string(sc.StartZero) + " → " + 
+                    std::to_string(sc.EndZero) + "]");
+            plt::xlabel("Sample index");
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
             plt::ylabel("Acc_Y");
 
             std::string fname = STROKE_PLOT_DIR + "/stroke_" + std::to_string(sc.StrokeID) + ".png";
@@ -449,12 +727,32 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
 
         // --- Zero crossing markers (plot at exact interpolated y; here we use interp_at to get y) ---
         std::vector<double> zero_x, zero_y;
+<<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
         for (double zpos : all_zeros) {
             zero_x.push_back(zpos);
             // use interp_at to find fractional-sample y value
             zero_y.push_back(interp_at(acc_y_smooth, zpos));
+<<<<<<< HEAD
         }
         if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx");
+=======
+        for (int z : all_zeros) {
+            zero_x.push_back((double)z);
+            zero_y.push_back(acc_y_smooth[z]);  
+        }
+<<<<<<< HEAD
+        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); // black 'x' marks at the real values
+>>>>>>> a71cc14 (Commit of project)
+=======
+        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); 
+>>>>>>> bbc01cf (Clean)
+=======
+        }
+        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx");
+>>>>>>> 44db27e (Initial commit with stroke analysis code)
 
         plt::title("Detected stroke cycles");
         plt::xlabel("Sample index");
