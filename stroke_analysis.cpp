@@ -67,7 +67,7 @@ int main() {
         }
 
         std::string line;
-        std::getline(fin, line); // header
+        std::getline(fin, line);
         std::stringstream ss(line);
         std::string col;
         std::vector<std::string> headers;
@@ -106,7 +106,6 @@ int main() {
             }
             // guard number of columns
             if ((int)row_cells.size() <= std::max({idx_AccX, idx_AccY, idx_GyrX, idx_GyrY, idx_GyrZ})) {
-                // row too short; push zeros or skip
                 accX.push_back(0.0);
                 acc_y.push_back(0.0);
                 gyrX.push_back(0.0);
@@ -148,8 +147,8 @@ int main() {
             std::vector<DecPhaseMetrics> dec_metrics;
             std::vector<StrokePhaseMetrics> stroke_phase_metrics;
 
-        // --- Stroke cycles (fixed) ---
-for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
+// --- Stroke cycles ---
+for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   
     int z1 = all_zeros[i];
     int z2 = all_zeros[i+1];
     int z3 = all_zeros[i+2];
@@ -166,11 +165,11 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
 
     if (pos_in_first.empty() || neg_in_second.empty()) continue;
 
-    // strongest positive in first half (index of sample)
+    // strongest positive in first half 
     int pos_idx = *std::max_element(pos_in_first.begin(), pos_in_first.end(),
         [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
 
-    // strongest negative in second half (index of sample)
+    // strongest negative in second half 
     int neg_idx = *std::min_element(neg_in_second.begin(), neg_in_second.end(),
         [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
 
@@ -188,22 +187,20 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
 
     // assign StrokeID based on number of strokes already collected
     StrokeCycle sc{
-        (int)stroke_cycles.size() + 1, // StrokeID
+        (int)stroke_cycles.size() + 1, 
         z1, pos_idx, z2, neg_idx, z3,
         timing.totalTime, timing.timeToPosPeak, timing.timeToNegPeak,
         pos_area, neg_area_mag
     };
 
-    // push the stroke cycle now (so we can safely reference 'sc' later)
+    // push the stroke cycle 
     stroke_cycles.push_back(sc);
 
-    // === compute phase metrics using sc (use stroke_cycles.back() if you prefer) ===
-    // after stroke_cycles.push_back(sc);
 {
     const StrokeCycle &last = stroke_cycles.back();
     int sid = last.StrokeID;
     int z1 = last.StartZero;
-    int z2 = last.MidZero; // mid zero
+    int z2 = last.MidZero; 
     int z3 = last.EndZero;
 
     // --- Acceleration phase ---
@@ -266,7 +263,6 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
         auto ws1 = wb.active_sheet();
         ws1.title("Acceleration Phase");
 
-        // Header row
         std::vector<std::string> headers1 = {
             "StrokeID","Duration","ACC-Y+Peak","TimeToPeak(%)","RAD",
             "ΔVelocity","|ACC-X|","|Gyr-X|","|Gyr-Y|","|Gyr-Z|"
@@ -274,7 +270,6 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
         for (size_t i = 0; i < headers1.size(); ++i)
             ws1.cell(1, i + 1).value(headers1[i]);
 
-        // Data rows
         int row = 2;
         for (auto &m : acc_metrics) {
             ws1.cell(row, 1).value(m.StrokeID);
@@ -289,7 +284,6 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
             ws1.cell(row, 10).value(m.MeanAbsGyrZ);
             ++row;
         }
-
 
         // --- Sheet 2: Deceleration Phase ---
         auto ws2 = wb.create_sheet();
@@ -409,9 +403,9 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   // need z1,z2,z3 available
         std::vector<double> zero_x, zero_y;
         for (int z : all_zeros) {
             zero_x.push_back((double)z);
-            zero_y.push_back(acc_y_smooth[z]);  // use the sample value closest to zero
+            zero_y.push_back(acc_y_smooth[z]);  
         }
-        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); // black 'x' marks at the real values
+        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); 
 
         plt::title("Detected stroke cycles");
         plt::xlabel("Sample index");
