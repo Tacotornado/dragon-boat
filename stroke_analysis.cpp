@@ -1,3 +1,4 @@
+//stroke_analysis.cpp
 #include <bits/stdc++.h>
 #include <filesystem>
 #include "matplotlibcpp.h"
@@ -126,7 +127,7 @@ int main() {
 
             // --- Filtering ---
             double fs_rate = 120.0; // Hz
-            double cutoff = 10.0;   // Hz
+            double cutoff = 5.0;   // Hz
             ButterworthLowpass lp_filter(cutoff, fs_rate, 2);
             auto acc_y_smooth = lp_filter.apply(acc_y);
 
@@ -137,8 +138,8 @@ int main() {
 
             std::cout << "Pos peaks: " << pos_peaks.size() << " Neg peaks: " << neg_peaks.size() << "\n";
 
-            // --- Zero crossings ---
-            auto all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
+            // --- Zero crossings (fractional positions) ---
+            std::vector<double> all_zeros = find_all_zero_crossings(acc_y_smooth, 0.1, 7, 0.01, (int)(0.15*fs_rate), 0.01);
             std::cout << "Zero crossings: " << all_zeros.size() << "\n";
 
             // --- Stroke cycles ---
@@ -147,63 +148,89 @@ int main() {
             std::vector<DecPhaseMetrics> dec_metrics;
             std::vector<StrokePhaseMetrics> stroke_phase_metrics;
 
-// --- Stroke cycles ---
-for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {   
-    int z1 = all_zeros[i];
-    int z2 = all_zeros[i+1];
-    int z3 = all_zeros[i+2];
+// --- Stroke cycles (using fractional zeros for timing, integer indices for slicing) ---
+for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
+    double z1d = all_zeros[i];
+    double z2d = all_zeros[i+1];
+    double z3d = all_zeros[i+2];
 
-    // Find positive peaks inside [z1, z2)
-    std::vector<int> pos_in_first;
-    for (int p : pos_peaks)
-        if (p > z1 && p < z2) pos_in_first.push_back(p);
+    // integer bounds for slicing / peak search 
+    int z1 = std::max(0, (int)std::floor(z1d));
+    int z2 = std::min((int)acc_y_smooth.size()-1, (int)std::round(z2d));
+    int z3 = std::min((int)acc_y_smooth.size()-1, (int)std::ceil(z3d));
 
-    // Find negative peaks inside (z2, z3]
-    std::vector<int> neg_in_second;
-    for (int p : neg_peaks)
-        if (p > z2 && p < z3) neg_in_second.push_back(p);
+    if (z1 >= z2 || z2 >= z3) continue;
+
+    // Find positive peaks inside (z1, z2)
+    std::vector<double> pos_in_first;
+    for (double p : pos_peaks)
+        if (p > z1 && p < z2)
+            pos_in_first.push_back((int)std::round(p));
+
+    // Find negative peaks inside (z2, z3)
+    std::vector<double> neg_in_second;
+    for (double p : neg_peaks)
+        if (p > z2 && p < z3)
+            neg_in_second.push_back((int)std::round(p));
+
 
     if (pos_in_first.empty() || neg_in_second.empty()) continue;
 
-    // strongest positive in first half 
+    // strongest positive in first half
     int pos_idx = *std::max_element(pos_in_first.begin(), pos_in_first.end(),
         [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
 
-    // strongest negative in second half 
+    // strongest negative in second half
     int neg_idx = *std::min_element(neg_in_second.begin(), neg_in_second.end(),
         [&](int a,int b){ return acc_y_smooth[a] < acc_y_smooth[b]; });
 
-    // sanity check on sign
     if (acc_y_smooth[pos_idx] <= 0 || acc_y_smooth[neg_idx] >= 0) continue;
 
-    auto timing = computeTiming(z1, pos_idx, z2, neg_idx, z3, fs_rate);
+    // --- Timing using fractional zero positions (higher precision) ---
+    double totalTime = (z3d - z1d) / fs_rate;
+    double timeToPosPeak = (pos_idx - z1d) / fs_rate;
+    double timeToNegPeak = (neg_idx - z2d) / fs_rate;
 
-    // compute areas using trapezoid helper
-    std::vector<double> segpos, segneg;
-    for (int k = z1; k <= z2; ++k) segpos.push_back(std::max(0.0, acc_y_smooth[k]));
-    for (int k = z2; k <= z3; ++k) segneg.push_back(std::min(0.0, acc_y_smooth[k]));
-    double pos_area     = trapz(segpos, 1.0/fs_rate);
-    double neg_area_mag = std::abs(trapz(segneg, 1.0/fs_rate));
+    // Compute areas using fractional zero crossings 
+    auto slice_with_fractional = [&](double start, double end) {
+        std::vector<double> x, y;
+        int i_start = (int)std::floor(start);
+        int i_end   = (int)std::ceil(end);
 
-    // assign StrokeID based on number of strokes already collected
+        for (int k = i_start; k <= i_end; ++k) {
+            double xi = k;
+            double yi = interp_at(acc_y_smooth, xi);  // fractional y interpolation
+            x.push_back(xi);
+            y.push_back(yi);
+        }
+        return std::make_pair(x, y);
+    };
+
+    // Positive area (z1d → z2d)
+    auto [x_pos, y_pos] = slice_with_fractional(z1d, z2d);
+    for (double &v : y_pos) v = std::max(0.0, v);
+    double pos_area = trapz(y_pos, 1.0/fs_rate);
+
+    // Negative area (z2d → z3d)
+    auto [x_neg, y_neg] = slice_with_fractional(z2d, z3d);
+    for (double &v : y_neg) v = std::min(0.0, v);
+    double neg_area_mag = std::abs(trapz(y_neg, 1.0/fs_rate));
+
+    // assign StrokeID and use integer indices for Start/Mid/End to preserve current downstream logic
     StrokeCycle sc{
-        (int)stroke_cycles.size() + 1, 
+        (int)stroke_cycles.size() + 1,
         z1, pos_idx, z2, neg_idx, z3,
-        timing.totalTime, timing.timeToPosPeak, timing.timeToNegPeak,
+        totalTime, timeToPosPeak, timeToNegPeak,
         pos_area, neg_area_mag
     };
 
-    // push the stroke cycle 
     stroke_cycles.push_back(sc);
 
-{
+    // --- compute metrics as before; use integer z1,z2,z3 for slicing
     const StrokeCycle &last = stroke_cycles.back();
     int sid = last.StrokeID;
-    int z1 = last.StartZero;
-    int z2 = last.MidZero; 
-    int z3 = last.EndZero;
 
-    // --- Acceleration phase ---
+    // Acceleration phase
     double dur_acc = (z2 - z1) / fs_rate;
     double accY_peak = acc_y_smooth[last.PosPeak];
     double time_to_peak = (last.PosPeak - z1) / fs_rate;
@@ -221,7 +248,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         mean_abs_accx_acc, mean_abs_gyx_acc, mean_abs_gyy_acc, mean_abs_gyz_acc
     });
 
-    // --- Deceleration phase ---
+    // Deceleration phase
     double dur_dec = (z3 - z2) / fs_rate;
     double accY_negpeak = acc_y_smooth[last.NegPeak];
     double time_to_neg = (last.NegPeak - z2) / fs_rate;
@@ -238,7 +265,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         mean_abs_accx_dec, mean_abs_gyx_dec, mean_abs_gyy_dec, mean_abs_gyz_dec
     });
 
-    // --- Stroke phase (acc+dec) ---
+    // Stroke phase metrics 
     auto gyrx_slice = std::vector<double>(gyrX.begin()+z1, gyrX.begin()+z3);
     double gyrx_pos_peak = *std::max_element(gyrx_slice.begin(), gyrx_slice.end());
     double gyrx_neg_peak = *std::min_element(gyrx_slice.begin(), gyrx_slice.end());
@@ -248,12 +275,12 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     double mean_abs_gyz_stroke  = mean_abs_diff(std::vector<double>(gyrZ.begin()+z1, gyrZ.begin()+z3));
 
     stroke_phase_metrics.push_back({
-        sid, gyrx_pos_peak, gyrx_neg_peak,
-        mean_abs_accx_stroke, mean_abs_gyx_stroke,
-        mean_abs_gyy_stroke, mean_abs_gyz_stroke
-    });
-}
-}
+    sid, gyrx_pos_peak, gyrx_neg_peak,
+    mean_abs_accx_stroke, mean_abs_gyx_stroke,
+    mean_abs_gyy_stroke, mean_abs_gyz_stroke
+});
+} 
+
 
         std::cout << "Saved " << stroke_cycles.size() << " stroke cycles\n";
         
@@ -341,31 +368,24 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
             for (int k = sc.StartZero; k <= sc.EndZero; k++)
                 seg.push_back(acc_y_smooth[k]);
 
-            // X-axis relative to segment start
+            // X-axis uses actual sample indices
             std::vector<double> x(seg.size());
-            std::iota(x.begin(), x.end(), 0);
+            std::iota(x.begin(), x.end(), sc.StartZero);  // start from actual index
 
-            plt::figure_size(800,400);
+            plt::figure_size(800, 400);
             plt::plot(x, seg, "b-");
 
-            // Mark positive peak
-            int pos_rel = sc.PosPeak - sc.StartZero;
-            plt::plot({(double)pos_rel}, {acc_y_smooth[sc.PosPeak]}, "ro");
+            // Mark key points using actual sample indices
+            plt::plot({(double)sc.StartZero}, {acc_y_smooth[sc.StartZero]}, "kx"); // start
+            plt::plot({(double)sc.MidZero},   {acc_y_smooth[sc.MidZero]},   "kx"); // mid
+            plt::plot({(double)sc.EndZero},   {acc_y_smooth[sc.EndZero]},   "kx"); // end
+            plt::plot({(double)sc.PosPeak},   {acc_y_smooth[sc.PosPeak]},   "ro"); // pos peak
+            plt::plot({(double)sc.NegPeak},   {acc_y_smooth[sc.NegPeak]},   "bv"); // neg peak
 
-            // Mark mid zero at its actual sample value
-            int mid_rel = sc.MidZero - sc.StartZero;
-            plt::plot({(double)mid_rel}, {acc_y_smooth[sc.MidZero]}, "kx");
-
-            // Mark start and end zeros at their actual sample values
-            plt::plot({0.0}, {acc_y_smooth[sc.StartZero]}, "kx");
-            plt::plot({(double)(sc.EndZero - sc.StartZero)}, {acc_y_smooth[sc.EndZero]}, "kx");
-
-            // Mark negative peak
-            int neg_rel = sc.NegPeak - sc.StartZero;
-            plt::plot({(double)neg_rel}, {acc_y_smooth[sc.NegPeak]}, "bv");
-
-            plt::title("Stroke " + std::to_string(sc.StrokeID));
-            plt::xlabel("Sample offset");
+            plt::title("Stroke " + std::to_string(sc.StrokeID) + 
+                    "  [" + std::to_string(sc.StartZero) + " → " + 
+                    std::to_string(sc.EndZero) + "]");
+            plt::xlabel("Sample index");
             plt::ylabel("Acc_Y");
 
             std::string fname = STROKE_PLOT_DIR + "/stroke_" + std::to_string(sc.StrokeID) + ".png";
@@ -399,13 +419,14 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         if (!pos_x.empty()) plt::plot(pos_x, pos_y, "ro");
         if (!neg_x.empty()) plt::plot(neg_x, neg_y, "bv");
 
-        // --- Zero crossing markers ---
+        // --- Zero crossing markers (plot at exact interpolated y; here we use interp_at to get y) ---
         std::vector<double> zero_x, zero_y;
-        for (int z : all_zeros) {
-            zero_x.push_back((double)z);
-            zero_y.push_back(acc_y_smooth[z]);  
+        for (double zpos : all_zeros) {
+            zero_x.push_back(zpos);
+            // use interp_at to find fractional-sample y value
+            zero_y.push_back(interp_at(acc_y_smooth, zpos));
         }
-        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx"); 
+        if (!zero_x.empty()) plt::plot(zero_x, zero_y, "kx");
 
         plt::title("Detected stroke cycles");
         plt::xlabel("Sample index");
