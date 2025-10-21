@@ -5,6 +5,7 @@
 #include <math.h>
 #include <algorithm>
 #include <vector>
+#include "filters.h"
 
 // Set up //
 std::string DATA_DIR = "sensor_data.csv";
