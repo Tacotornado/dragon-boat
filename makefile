@@ -29,8 +29,8 @@ TARGET := stroke_analysis
 all: $(TARGET)
 
 # Link the target
-$(TARGET): $(OBJ)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OBJ) -o $@ $(LDFLAGS)
+$(TARGET):
+	$(CXX) $(CXXFLAGS) $(INCLUDES) stroke_analysis.cpp utilities/filters.cpp -o $@ $(LDFLAGS)
 
 # Compile source files
 %.o: %.cpp

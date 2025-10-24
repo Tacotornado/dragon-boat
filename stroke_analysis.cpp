@@ -361,30 +361,37 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
 
         wb.save("results_full_strokes_A/stroke_phase_metrics.xlsx");
 
-        // --- Individual stroke plots ---
-        for (auto &sc : stroke_cycles) {
-            // Extract segment
-            std::vector<double> seg;
-            for (int k = sc.StartZero; k <= sc.EndZero; k++)
-                seg.push_back(acc_y_smooth[k]);
+        // --- Individual stroke plots (start & end exactly at zero crossings) ---
+        for (size_t i = 0; i < stroke_cycles.size(); ++i) {
+            auto &sc = stroke_cycles[i];
 
-            // X-axis uses actual sample indices
-            std::vector<double> x(seg.size());
-            std::iota(x.begin(), x.end(), sc.StartZero);  // start from actual index
+            // Get fractional zero crossings for this stroke
+            double z1d = all_zeros[i * 2];       // start zero (fractional)
+            double z2d = all_zeros[i * 2 + 1];   // mid zero
+            double z3d = all_zeros[i * 2 + 2];   // end zero (fractional)
+
+            // Create fine-grained sample grid (e.g., 0.1 sample steps)
+            double step = 0.1;
+            std::vector<double> x, y;
+            for (double xi = z1d; xi <= z3d; xi += step) {
+                x.push_back(xi);
+                y.push_back(interp_at(acc_y_smooth, xi)); // linear interpolation
+            }
 
             plt::figure_size(800, 400);
-            plt::plot(x, seg, "b-");
+            plt::plot(x, y, "b-");
 
-            // Mark key points using actual sample indices
-            plt::plot({(double)sc.StartZero}, {acc_y_smooth[sc.StartZero]}, "kx"); // start
-            plt::plot({(double)sc.MidZero},   {acc_y_smooth[sc.MidZero]},   "kx"); // mid
-            plt::plot({(double)sc.EndZero},   {acc_y_smooth[sc.EndZero]},   "kx"); // end
-            plt::plot({(double)sc.PosPeak},   {acc_y_smooth[sc.PosPeak]},   "ro"); // pos peak
-            plt::plot({(double)sc.NegPeak},   {acc_y_smooth[sc.NegPeak]},   "bv"); // neg peak
+            // Mark fractional zero crossings
+            plt::plot({z1d}, {interp_at(acc_y_smooth, z1d)}, "kx"); // start
+            plt::plot({z2d}, {interp_at(acc_y_smooth, z2d)}, "kx"); // mid
+            plt::plot({z3d}, {interp_at(acc_y_smooth, z3d)}, "kx"); // end
 
-            plt::title("Stroke " + std::to_string(sc.StrokeID) + 
-                    "  [" + std::to_string(sc.StartZero) + " → " + 
-                    std::to_string(sc.EndZero) + "]");
+            // Mark peaks (still integer indices)
+            plt::plot({(double)sc.PosPeak}, {acc_y_smooth[sc.PosPeak]}, "ro");
+            plt::plot({(double)sc.NegPeak}, {acc_y_smooth[sc.NegPeak]}, "bv");
+
+            plt::title("Stroke " + std::to_string(sc.StrokeID) +
+                    " [zero: " + std::to_string(z1d) + " → " + std::to_string(z3d) + "]");
             plt::xlabel("Sample index");
             plt::ylabel("Acc_Y");
 
