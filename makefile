@@ -25,7 +25,7 @@ LDFLAGS := \
   $(shell /mnt/MPLL/dragonboat/miniconda3/bin/python3.13-config --embed --ldflags)
 
 # --- Source files and target ---
-SRC := $(wildcard *.cpp utilities/*.cpp)
+SRC := stroke_analysis.cpp utilities/filters.cpp
 OBJ := $(SRC:.cpp=.o)
 TARGET := stroke_analysis
 
