@@ -1,3 +1,4 @@
+/*
 Copyright (c) 2014-2022 Jarryd Beck
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
