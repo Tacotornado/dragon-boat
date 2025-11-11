@@ -7,6 +7,7 @@
 #include "stroke_metrics.h"
 #include "math_utils.h"
 #include <xlnt/xlnt.hpp>
+#include "cxxopts.hpp"
 
 namespace plt = matplotlibcpp;
 namespace fs = std::filesystem;
@@ -54,14 +55,30 @@ struct StrokePhaseMetrics {
     double MeanAbsGyrZ;
 };
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
-        std::string RESULT_DIR = "results_full_strokes_A";
+        // defining available options //
+        cxxopts::Options options("Stroke Analysis", "Analyze dragon boat stroke data from Xsens CSV");
+        options.add_options()
+            ("i,input", "Input CSV file path", cxxopts::value<std::string>())
+            ("o,output", "Output directory", cxxopts::value<std::string>()->default_value("results_full_strokes_A")) //set new default dir here//
+            ("h,help", "Print help");
+
+        // parsing command line arguments //
+        auto result = options.parse(argc, argv);
+
+        if (result.count("help") || !result.count("input")) {
+            std::cout << options.help() << std::endl;
+            return 0;
+        }
+
+        std::string csv_path = result["input"].as<std::string>();
+        std::string RESULT_DIR = result["output"].as<std::string>();
         std::string STROKE_PLOT_DIR = RESULT_DIR + "/stroke_plots";
         fs::create_directories(STROKE_PLOT_DIR);
 
         // --- Load Data from CSV ---
-        std::ifstream fin("data/Canoe_xsens_dot.csv");
+        std::ifstream fin(csv_path);
         if (!fin.is_open()) {
             std::cerr << "Failed to open CSV file!\n";
             return 1;
@@ -80,6 +97,9 @@ int main() {
                 if (headers[i] == name) return (int)i;
             return -1;
         };
+
+        std::cout << "Columns found: " << headers.size() << "from CSV: " << csv_path << "\n";
+        std::cout << "Results being stored to: " << RESULT_DIR << "\n";
 
         int idx_AccX = find_idx("Acc_X");
         int idx_AccY = find_idx("Acc_Y");
@@ -147,6 +167,7 @@ int main() {
             std::vector<AccPhaseMetrics> acc_metrics;
             std::vector<DecPhaseMetrics> dec_metrics;
             std::vector<StrokePhaseMetrics> stroke_phase_metrics;
+    
 
 // --- Stroke cycles (using fractional zeros for timing, integer indices for slicing) ---
 for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
@@ -359,7 +380,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         }
 
 
-        wb.save("results_full_strokes_A/stroke_phase_metrics.xlsx");
+        wb.save(RESULT_DIR + "/stroke_phase_metrics.xlsx");
 
         // --- Individual stroke plots (start & end exactly at zero crossings) ---
         for (size_t i = 0; i < stroke_cycles.size(); ++i) {
@@ -445,4 +466,4 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     } catch(std::exception &e) {
         std::cerr << "Error: " << e.what() << "\n";
     }
-}
+};
