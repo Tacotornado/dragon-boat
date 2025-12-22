@@ -25,7 +25,7 @@ LDFLAGS := \
   $(shell /mnt/MPLL/dragonboat/miniconda3/bin/python3.13-config --embed --ldflags)
 
 # --- Source files and target ---
-SRC := stroke_analysis.cpp utilities/filters.cpp
+SRC := stroke_analysis_fcopt.cpp utilities/filters.cpp utilities/auto_cutoff.cpp utilities/fcopt.cpp
 OBJ := $(SRC:.cpp=.o)
 TARGET := stroke_analysis
 
@@ -53,7 +53,7 @@ clean:
 # Run program (example usage)
 run: $(TARGET)
 	@echo "Running stroke_analysis..."
-	./$(TARGET) --input data/Canoe_xsens_dot.csv --output results_test
+	./$(TARGET) --input data/Canoe_xsens_dot.csv --output results_fcopt
 
 # Debug build (no optimization, with symbols)
 debug: CXXFLAGS += -g -O0
