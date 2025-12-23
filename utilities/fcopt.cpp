@@ -49,7 +49,6 @@ static double residual_analysis(
         cutoffs.push_back(fc);
     }
 
-    // knee detection (max curvature)
     int idx = std::distance(
         rms_residuals.begin(),
         std::min_element(rms_residuals.begin(), rms_residuals.end())
