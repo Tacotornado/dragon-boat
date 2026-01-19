@@ -1,4 +1,4 @@
-//stroke_analysis_fcopt.cpp
+//stroke_analysis_com.cpp
 #include <bits/stdc++.h>
 #include <filesystem>
 #include "matplotlibcpp.h"
@@ -13,7 +13,6 @@
 namespace plt = matplotlibcpp;
 namespace fs = std::filesystem;
 
-// ---- StrokeCycle struct ----
 struct StrokeCycle {
     int StrokeID;
     int StartZero, PosPeak, MidZero, NegPeak, EndZero;
@@ -118,7 +117,7 @@ int main(int argc, char* argv[]) {
         cxxopts::Options options("Stroke Analysis", "Analyze dragon boat stroke data from Xsens CSV");
         options.add_options()
             ("i,input", "Input CSV file path", cxxopts::value<std::string>())
-            ("o,output", "Output directory", cxxopts::value<std::string>()->default_value("results_full_strokes_A")) //set new default dir here//
+            ("o,output", "Output directory", cxxopts::value<std::string>()->default_value("results_full_strokes_A")) //set new default dir//
             ("h,help", "Print help");
 
         // parsing command line arguments //
@@ -171,7 +170,6 @@ int main(int argc, char* argv[]) {
 
         // --- Declare all channel vectors ---
         std::vector<double> accX, acc_y, gyrX, gyrY, gyrZ;
-
 
         // Read CSV rows and load full columns
         while (std::getline(fin, line)) {
@@ -248,7 +246,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     if (z1 >= z2 || z2 >= z3) continue;
 
     // Find positive peaks inside (z1, z2)
-    std::vector<double> pos_in_first;
+    std::vector<int> pos_in_first;
     for (double p : pos_peaks)
         if (p > z1 && p < z2)
             pos_in_first.push_back((int)std::round(p));
@@ -312,12 +310,12 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     auto y_neg_fixed = slice_fixed_neg(z2d, z3d);
     double neg_area_fixed = std::abs(trapz(y_neg_fixed, 1.0/fs_rate));
 
-    // Positive area (z1d → z2d)
+    // Positive area (z1d -> z2d)
     auto [x_pos, y_pos] = slice_with_fractional(z1d, z2d);
     for (double &v : y_pos) v = std::max(0.0, v);
     double pos_area = trapz(y_pos, 1.0/fs_rate);
 
-    // Negative area (z2d → z3d)
+    // Negative area (z2d -> z3d)
     auto [x_neg, y_neg] = slice_with_fractional(z2d, z3d);
     for (double &v : y_neg) v = std::min(0.0, v);
     double neg_area_mag = std::abs(trapz(y_neg, 1.0/fs_rate));
@@ -379,7 +377,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     double snr_fixed = var_sig_fx / std::max(1e-9, var_noise_fx);
     double snr_improve = snr_fcopt / std::max(1e-12, snr_fixed);
 
-    int win = (int)(0.03 * fs_rate); // ±30ms window
+    int win = (int)(0.03 * fs_rate); // +-30ms window
     int a = std::max(z1, pos_idx - win);
     int b = std::min(z2, pos_idx + win);
 
@@ -394,7 +392,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
     StrokeCycle sc{
     (int)stroke_cycles.size() + 1,
     z1, pos_idx, z2, neg_idx, z3,
-    z1d, z2d, z3d,                     // store fractional
+    z1d, z2d, z3d,
     totalTime, timeToPosPeak, timeToNegPeak,
     pos_area, neg_area_mag
     };
@@ -567,6 +565,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
 
         std::vector<std::string> headers4 = {
             "StrokeID",
+            "FcoptCutoff_Hz",
             "PosPeak_fcopt","PosPeak_fixed","PeakDiff",
             "Area_fcopt","Area_fixed","AreaDiff",
             "RMSE",
@@ -578,27 +577,33 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
             "SNR_Improve"
         };
 
-
         for (size_t i = 0; i < headers4.size(); ++i)
             ws4.cell(1, i+1).value(headers4[i]);
 
         int r4 = 2;
         for (auto &m : filter_compare_metrics) {
             ws4.cell(r4,1).value(m.StrokeID);
-            ws4.cell(r4,2).value(m.PosPeak_fcopt);
-            ws4.cell(r4,3).value(m.PosPeak_fixed);
-            ws4.cell(r4,4).value(m.PeakDiff);
-            ws4.cell(r4,5).value(m.Area_fcopt);
-            ws4.cell(r4,6).value(m.Area_fixed);
-            ws4.cell(r4,7).value(m.AreaDiff);
-            ws4.cell(r4,8).value(m.RMSE);
-            ws4.cell(r4,9).value(m.HF_Energy_fcopt);
-            ws4.cell(r4,10).value(m.HF_Energy_fixed);
-            ws4.cell(r4,11).value(m.PeakTimeShift);
-            ws4.cell(r4,12).value(m.SmoothRatio);
-            ws4.cell(r4,13).value(m.PeakPreserveRatio);
-            ws4.cell(r4,14).value(m.AreaPreserveRatio);
-            ws4.cell(r4,15).value(m.SNR_Improve);
+            ws4.cell(r4,2).value(cutoff);                
+
+            ws4.cell(r4,3).value(m.PosPeak_fcopt);
+            ws4.cell(r4,4).value(m.PosPeak_fixed);
+            ws4.cell(r4,5).value(m.PeakDiff);
+
+            ws4.cell(r4,6).value(m.Area_fcopt);
+            ws4.cell(r4,7).value(m.Area_fixed);
+            ws4.cell(r4,8).value(m.AreaDiff);
+
+            ws4.cell(r4,9).value(m.RMSE);
+
+            ws4.cell(r4,10).value(m.HF_Energy_fcopt);
+            ws4.cell(r4,11).value(m.HF_Energy_fixed);
+
+            ws4.cell(r4,12).value(m.PeakTimeShift);
+
+            ws4.cell(r4,13).value(m.SmoothRatio);
+            ws4.cell(r4,14).value(m.PeakPreserveRatio);
+            ws4.cell(r4,15).value(m.AreaPreserveRatio);
+            ws4.cell(r4,16).value(m.SNR_Improve);
             ++r4;
         }
 
@@ -629,9 +634,10 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
 
             plt::figure_size(900, 450);
 
-            // use named_plot (safer)
+            // use named_plot 
             plt::named_plot("fcopt cutoff", x, y_fcopt, "b-");
             plt::named_plot("Fixed 5 Hz", x, y_fixed, "r--");
+            plt::legend();
 
             // zero crossings
             plt::plot({z1d}, {interp_at(acc_y_fcopt, z1d)}, "kx");
@@ -674,7 +680,9 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
 
         // --- Plot overview ---
         plt::figure_size(1600,600);
-        plt::plot(acc_y_fcopt);
+        plt::named_plot("fcopt", acc_y_fcopt, "b-");
+        plt::named_plot("fixed 5Hz", acc_y_fixed, "r--");
+        plt::legend();
 
         std::vector<double> pos_x, pos_y, neg_x, neg_y;
         for (auto &sc : stroke_cycles) {
@@ -686,7 +694,7 @@ for (size_t i = 0; i + 2 < all_zeros.size(); ++i) {
         if (!pos_x.empty()) plt::plot(pos_x, pos_y, "ro");
         if (!neg_x.empty()) plt::plot(neg_x, neg_y, "bv");
 
-        // --- Zero crossing markers (plot at exact interpolated y; here we use interp_at to get y) ---
+        // --- Zero crossing markers (plot at exact interpolated y; use interp_at to get y) ---
         std::vector<double> zero_x, zero_y;
         for (double zpos : all_zeros) {
             zero_x.push_back(zpos);
