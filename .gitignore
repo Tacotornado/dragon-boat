@@ -211,3 +211,9 @@ __marimo__/
 *.json
 *.xml
 *.zip
+<<<<<<< HEAD
+=======
+results_full_strokes_A/stroke_plots/*.png
+results_full_strokes_A/stroke_plots/*.png
+results_full_strokes_A/stroke_plots/*.png
+>>>>>>> 57d4bd5 (ignore generated stroke plots)
