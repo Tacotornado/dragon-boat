@@ -166,6 +166,7 @@ int main() {
             double fs_rate = 120.0; // Hz
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
             double cutoff = 5.0;   // Hz
 =======
             double cutoff = 10.0;   // Hz
@@ -173,6 +174,9 @@ int main() {
 =======
             double cutoff = 5.0;   // Hz
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+            double cutoff = 5.0;   // Hz // is there a way to make this adaptive
+>>>>>>> 7cf8492 (merging)
             ButterworthLowpass lp_filter(cutoff, fs_rate, 2);
             auto acc_y_smooth = lp_filter.apply(acc_y);
 
