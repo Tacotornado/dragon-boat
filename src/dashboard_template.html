@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canoe IMU Stroke Analytics Dashboard</title>
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js for interactive plotting -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+        }
+        .glass-card {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+    </style>
+</head>
+<body class="p-6 md:p-12 min-h-screen">
+    <div class="max-w-7xl mx-auto space-y-8">
+        
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-800 pb-6">
+            <div>
+                <h1 class="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400">
+                    Canoe IMU Stroke Analytics
+                </h1>
+                <p class="text-gray-400 mt-2">Real-time Performance Analysis Engine &bull; Adaptive Cutoff Butterworth IIR Filter</p>
+            </div>
+            <div class="mt-4 md:mt-0 flex gap-4">
+                <div class="glass-card px-4 py-2 rounded-xl text-center">
+                    <span class="text-xs text-gray-500 uppercase font-semibold">Total Strokes</span>
+                    <p id="total-strokes-label" class="text-2xl font-bold text-blue-400">-</p>
+                </div>
+                <div class="glass-card px-4 py-2 rounded-xl text-center">
+                    <span class="text-xs text-gray-500 uppercase font-semibold">Sample Rate</span>
+                    <p class="text-2xl font-bold text-indigo-400">120 Hz</p>
+                </div>
+                <div class="glass-card px-4 py-2 rounded-xl text-center">
+                    <span class="text-xs text-gray-500 uppercase font-semibold">Sensor</span>
+                    <p class="text-2xl font-bold text-purple-400">Xsens DOT</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 1: Overview Chart -->
+        <div class="glass-card p-6 rounded-2xl shadow-xl space-y-4">
+            <h2 class="text-xl font-bold text-gray-200">Full Session Overview (Acc_Y)</h2>
+            <p class="text-sm text-gray-400">
+                Interactive view of the raw vs. adaptive-filtered acceleration. Zoom, pan, and hover to inspect values. 
+                Vertical lines mark zero-crossing boundaries; markers represent peaks.
+            </p>
+            <div id="overview-chart" class="w-full h-[400px] rounded-xl overflow-hidden bg-gray-900 border border-gray-800"></div>
+        </div>
+
+        <!-- Section 2: Split Stroke details & Plot -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Left: Individual Stroke Visualizer -->
+            <div class="glass-card p-6 rounded-2xl shadow-xl flex flex-col space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-xl font-bold text-gray-200">Individual Stroke Inspector</h2>
+                    <select id="stroke-selector" class="bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <!-- Options filled by JS -->
+                    </select>
+                </div>
+                <div id="stroke-chart" class="w-full h-[300px] rounded-xl overflow-hidden bg-gray-900 border border-gray-800"></div>
+                <div class="grid grid-cols-3 gap-4 text-center mt-2">
+                    <div class="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                        <span class="text-xs text-gray-400 block mb-1">Total Duration</span>
+                        <span id="stat-dur" class="text-lg font-bold text-blue-300">-</span>
+                    </div>
+                    <div class="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                        <span class="text-xs text-gray-400 block mb-1">Accel Phase</span>
+                        <span id="stat-accel" class="text-lg font-bold text-green-300">-</span>
+                    </div>
+                    <div class="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                        <span class="text-xs text-gray-400 block mb-1">Decel Phase</span>
+                        <span id="stat-decel" class="text-lg font-bold text-red-300">-</span>
+                    </div>
+                    <div class="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                        <span class="text-xs text-gray-400 block mb-1">Pos Peak AccY</span>
+                        <span id="stat-pos-peak" class="text-lg font-bold text-emerald-400">-</span>
+                    </div>
+                    <div class="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                        <span class="text-xs text-gray-400 block mb-1">Neg Peak AccY</span>
+                        <span id="stat-neg-peak" class="text-lg font-bold text-rose-400">-</span>
+                    </div>
+                    <div class="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                        <span class="text-xs text-gray-400 block mb-1">RAD (Peak / Time)</span>
+                        <span id="stat-rad" class="text-lg font-bold text-amber-400">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Statistics Table -->
+            <div class="glass-card p-6 rounded-2xl shadow-xl flex flex-col space-y-4">
+                <h2 class="text-xl font-bold text-gray-200">Summary Statistics</h2>
+                <div class="overflow-x-auto border border-gray-800 rounded-xl">
+                    <table class="w-full text-left border-collapse text-sm">
+                        <thead>
+                            <tr class="bg-gray-900 border-b border-gray-800 text-gray-400">
+                                <th class="p-3">Metric</th>
+                                <th class="p-3 text-right">Mean</th>
+                                <th class="p-3 text-right">Std Dev</th>
+                                <th class="p-3 text-right">Min</th>
+                                <th class="p-3 text-right">Max</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-tbody">
+                            <!-- Filled by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 3: All Stroke Data table -->
+        <div class="glass-card p-6 rounded-2xl shadow-xl space-y-4">
+            <h2 class="text-xl font-bold text-gray-200">Detailed Stroke Metrics Log</h2>
+            <div class="overflow-x-auto border border-gray-800 rounded-xl max-h-[300px] overflow-y-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead class="sticky top-0 bg-gray-950 z-10 border-b border-gray-800 text-gray-400">
+                        <tr>
+                            <th class="p-3">ID</th>
+                            <th class="p-3">Total Time (s)</th>
+                            <th class="p-3">Accel Time (s)</th>
+                            <th class="p-3">Decel Time (s)</th>
+                            <th class="p-3 text-right">Pos Peak (m/s²)</th>
+                            <th class="p-3 text-right">Neg Peak (m/s²)</th>
+                            <th class="p-3 text-right">RAD</th>
+                            <th class="p-3 text-right">Area Pos</th>
+                            <th class="p-3 text-right">Area Neg</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metrics-tbody">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Data Injection -->
+    <script>
+        // Placeholders replaced by python
+        const seriesData = __SERIES_DATA__;
+        const strokes = __STROKES_DATA__;
+        const stats = __STATS_DATA__;
+        
+        const DT = 1.0 / 120.0;
+        
+        // Render Overview Chart
+        function initOverview() {
+            const rawTrace = {
+                x: seriesData.time_s,
+                y: seriesData.acc_y_raw,
+                name: 'Raw Acc_Y',
+                type: 'scatter',
+                line: { color: 'rgba(156,163,175,0.4)', width: 1 }
+            };
+            
+            const filtTrace = {
+                x: seriesData.time_s,
+                y: seriesData.acc_y_filt,
+                name: 'Filtered Acc_Y',
+                type: 'scatter',
+                line: { color: '#3b82f6', width: 2 }
+            };
+            
+            // Accel zero crossing marks
+            const accelStartsX = strokes.map(s => s.accel_start_idx * DT);
+            const accelStartsY = strokes.map(s => seriesData.acc_y_filt[s.accel_start_idx]);
+            const accelStartsTrace = {
+                x: accelStartsX,
+                y: accelStartsY,
+                name: 'Accel Start (Zero Crossing)',
+                type: 'scatter',
+                mode: 'markers',
+                marker: { color: '#10b981', symbol: 'triangle-up', size: 10 }
+            };
+
+            // Decel zero crossing marks
+            const decelStartsX = strokes.map(s => s.decel_start_idx * DT);
+            const decelStartsY = strokes.map(s => seriesData.acc_y_filt[s.decel_start_idx]);
+            const decelStartsTrace = {
+                x: decelStartsX,
+                y: decelStartsY,
+                name: 'Decel Start (Zero Crossing)',
+                type: 'scatter',
+                mode: 'markers',
+                marker: { color: '#ef4444', symbol: 'triangle-down', size: 10 }
+            };
+
+            // Cutoff frequency secondary axis trace
+            const cutoffTrace = {
+                x: seriesData.time_s,
+                y: seriesData.cutoffs,
+                name: 'Adaptive Cutoff (Hz)',
+                type: 'scatter',
+                yaxis: 'y2',
+                line: { color: 'rgba(168,85,247,0.6)', width: 1.5, dash: 'dot' }
+            };
+
+            const layout = {
+                backgroundColor: 'rgba(0,0,0,0)',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(17,24,39,0.5)',
+                margin: { t: 20, b: 40, l: 50, r: 50 },
+                xaxis: {
+                    title: 'Time (seconds)',
+                    gridcolor: '#1f2937',
+                    tickfont: { color: '#9ca3af' },
+                    titlefont: { color: '#9ca3af' }
+                },
+                yaxis: {
+                    title: 'Acceleration (m/s²)',
+                    gridcolor: '#1f2937',
+                    tickfont: { color: '#9ca3af' },
+                    titlefont: { color: '#9ca3af' }
+                },
+                yaxis2: {
+                    title: 'Cutoff Frequency (Hz)',
+                    overlaying: 'y',
+                    side: 'right',
+                    range: [0, 25],
+                    showgrid: false,
+                    tickfont: { color: '#a855f7' },
+                    titlefont: { color: '#a855f7' }
+                },
+                legend: {
+                    font: { color: '#9ca3af' },
+                    orientation: 'h',
+                    y: -0.15
+                }
+            };
+            
+            Plotly.newPlot('overview-chart', [rawTrace, filtTrace, accelStartsTrace, decelStartsTrace, cutoffTrace], layout);
+        }
+        
+        // Render Individual Stroke
+        function renderStroke(strokeId) {
+            const stroke = strokes.find(s => s.stroke_id === strokeId);
+            if (!stroke) return;
+            
+            const pad = 10;
+            const startIdx = Math.max(0, stroke.accel_start_idx - pad);
+            const endIdx = Math.min(seriesData.time_s.length, stroke.decel_end_idx + pad);
+            
+            const times = seriesData.time_s.slice(startIdx, endIdx);
+            const raw = seriesData.acc_y_raw.slice(startIdx, endIdx);
+            const filt = seriesData.acc_y_filt.slice(startIdx, endIdx);
+            
+            const rawTrace = {
+                x: times,
+                y: raw,
+                name: 'Raw Acc_Y',
+                type: 'scatter',
+                line: { color: 'rgba(156,163,175,0.4)', width: 1 }
+            };
+            
+            const filtTrace = {
+                x: times,
+                y: filt,
+                name: 'Filtered Acc_Y',
+                type: 'scatter',
+                line: { color: '#3b82f6', width: 2.5 }
+            };
+            
+            const layout = {
+                backgroundColor: 'rgba(0,0,0,0)',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(17,24,39,0.5)',
+                margin: { t: 30, b: 30, l: 40, r: 15 },
+                xaxis: {
+                    gridcolor: '#1f2937',
+                    tickfont: { color: '#9ca3af' }
+                },
+                yaxis: {
+                    gridcolor: '#1f2937',
+                    tickfont: { color: '#9ca3af' }
+                },
+                shapes: [
+                    // Accel Phase shading
+                    {
+                        type: 'rect',
+                        xref: 'x',
+                        yref: 'paper',
+                        x0: stroke.accel_start_idx * DT,
+                        x1: stroke.accel_end_idx * DT,
+                        y0: 0,
+                        y1: 1,
+                        fillcolor: 'rgba(16,185,129,0.1)',
+                        line: { width: 0 }
+                    },
+                    // Decel Phase shading
+                    {
+                        type: 'rect',
+                        xref: 'x',
+                        yref: 'paper',
+                        x0: stroke.decel_start_idx * DT,
+                        x1: stroke.decel_end_idx * DT,
+                        y0: 0,
+                        y1: 1,
+                        fillcolor: 'rgba(239,68,68,0.1)',
+                        line: { width: 0 }
+                    },
+                    // Zero crossing vertical line
+                    {
+                        type: 'line',
+                        x0: stroke.decel_start_idx * DT,
+                        y0: Math.min(...raw),
+                        x1: stroke.decel_start_idx * DT,
+                        y1: Math.max(...raw),
+                        line: { color: '#ef4444', width: 1, dash: 'dash' }
+                    }
+                ],
+                showlegend: false
+            };
+            
+            Plotly.newPlot('stroke-chart', [rawTrace, filtTrace], layout);
+            
+            // Update HUD values
+            document.getElementById('stat-dur').textContent = stroke.TotalTime_s.toFixed(3) + ' s';
+            document.getElementById('stat-accel').textContent = stroke.accel_duration_s.toFixed(3) + ' s';
+            document.getElementById('stat-decel').textContent = stroke.decel_duration_s.toFixed(3) + ' s';
+            document.getElementById('stat-pos-peak').textContent = stroke.accY_pos_peak.toFixed(3) + ' m/s²';
+            document.getElementById('stat-neg-peak').textContent = stroke.accY_neg_peak.toFixed(3) + ' m/s²';
+            document.getElementById('stat-rad').textContent = stroke.RAD.toFixed(2);
+        }
+
+        // Fill table elements and options
+        function fillData() {
+            document.getElementById('total-strokes-label').textContent = strokes.length;
+
+            // Stroke Selector Options
+            const selector = document.getElementById('stroke-selector');
+            strokes.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.stroke_id;
+                opt.textContent = 'Stroke #' + s.stroke_id.toString().padStart(3, '0');
+                selector.appendChild(opt);
+            });
+            
+            selector.addEventListener('change', (e) => {
+                renderStroke(parseInt(e.target.value));
+            });
+            
+            // Statistics Table
+            const statsTbody = document.getElementById('stats-tbody');
+            const targetMetrics = [
+                'accel_duration_s', 'decel_duration_s', 'accY_pos_peak', 'accY_neg_peak', 'RAD', 'TotalTime_s'
+            ];
+            
+            // Friendly names
+            const names = {
+                'accel_duration_s': 'Accel Duration (s)',
+                'decel_duration_s': 'Decel Duration (s)',
+                'accY_pos_peak': 'Positive Peak AccY (m/s²)',
+                'accY_neg_peak': 'Negative Peak AccY (m/s²)',
+                'RAD': 'Rate of Accel Development (RAD)',
+                'TotalTime_s': 'Total Stroke Time (s)'
+            };
+            
+            stats.forEach(st => {
+                if (!targetMetrics.includes(st.Metric)) return;
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-800 hover:bg-gray-900 transition-colors';
+                row.innerHTML = `
+                    <td class="p-3 font-semibold text-gray-300">${names[st.Metric] || st.Metric}</td>
+                    <td class="p-3 text-right">${st.Mean.toFixed(3)}</td>
+                    <td class="p-3 text-right">${st.StdDev.toFixed(3)}</td>
+                    <td class="p-3 text-right text-emerald-400">${st.Min.toFixed(3)}</td>
+                    <td class="p-3 text-right text-rose-400">${st.Max.toFixed(3)}</td>
+                `;
+                statsTbody.appendChild(row);
+            });
+            
+            // Detailed Stroke Log
+            const metricsTbody = document.getElementById('metrics-tbody');
+            strokes.forEach(s => {
+                const row = document.createElement('tr');
+                row.className = 'border-b border-gray-800 hover:bg-gray-900 transition-colors cursor-pointer';
+                row.addEventListener('click', () => {
+                    selector.value = s.stroke_id;
+                    renderStroke(s.stroke_id);
+                });
+                row.innerHTML = `
+                    <td class="p-3 font-bold text-gray-400">#${s.stroke_id.toString().padStart(3, '0')}</td>
+                    <td class="p-3 font-semibold text-blue-400">${s.TotalTime_s.toFixed(3)}</td>
+                    <td class="p-3 text-green-400">${s.accel_duration_s.toFixed(3)}</td>
+                    <td class="p-3 text-red-400">${s.decel_duration_s.toFixed(3)}</td>
+                    <td class="p-3 text-right font-medium">${s.accY_pos_peak.toFixed(3)}</td>
+                    <td class="p-3 text-right font-medium">${s.accY_neg_peak.toFixed(3)}</td>
+                    <td class="p-3 text-right text-amber-300 font-medium">${s.RAD.toFixed(2)}</td>
+                    <td class="p-3 text-right">${s.accel_velocity_integral.toFixed(3)}</td>
+                    <td class="p-3 text-right">${s.decel_velocity_integral.toFixed(3)}</td>
+                `;
+                metricsTbody.appendChild(row);
+            });
+        }
+        
+        // Initial setup
+        window.addEventListener('load', () => {
+            initOverview();
+            fillData();
+            if (strokes.length > 0) {
+                renderStroke(strokes[0].stroke_id);
+            }
+        });
+    </script>
+</body>
+</html>

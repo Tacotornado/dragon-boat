@@ -1,0 +1,21 @@
+# Compiled Binaries
+stroke_analyzer_cpp
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Python virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
