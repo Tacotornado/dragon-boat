@@ -1,11 +1,15 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 //math_utils.h
 =======
 >>>>>>> a71cc14 (Commit of project)
 =======
 //math_utils.h
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+//math_utils.h
+>>>>>>> james
 #pragma once
 #include <vector>
 #include <numeric>
@@ -19,8 +23,11 @@ inline double trapz(const std::vector<double> &y, double dx) {
 }
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james
 
 // ---- MATLAB-like zero crossing (returns fractional x positions) ----
 inline std::vector<double> find_zero_crossings_interp(const std::vector<double>& x,
@@ -63,7 +70,10 @@ inline std::vector<double> interp1(const std::vector<double>& x,
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> a71cc14 (Commit of project)
 =======
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james

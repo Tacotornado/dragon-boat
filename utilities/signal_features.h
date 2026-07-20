@@ -1,7 +1,11 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 // signal_features.h
 =======
 >>>>>>> a71cc14 (Commit of project)
+=======
+// signal_features.h
+>>>>>>> james
 #pragma once
 #include <bits/stdc++.h>
 #include "math_utils.h"
@@ -20,8 +24,11 @@ inline double mean_abs_diff(const std::vector<double> &v) {
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james
 // ---- Peak detection (positive, refined with interpolation) ----
 inline std::vector<double> find_peaks_prominence(const std::vector<double> &sig, int distance, double prominence) {
     std::vector<double> peaks;
@@ -29,6 +36,7 @@ inline std::vector<double> find_peaks_prominence(const std::vector<double> &sig,
 
     for (int i = distance; i < n - distance; i++) {
         if (sig[i] > sig[i - 1] && sig[i] > sig[i + 1]) {
+<<<<<<< HEAD
 <<<<<<< HEAD
             bool ok = true;
             for (int j = 1; j <= distance; j++) {
@@ -48,6 +56,11 @@ inline std::vector<int> find_peaks_prominence(const std::vector<double> &sig, in
             for (int j = 1; j <= distance; j++) {
                 if (sig[i] < sig[i - j] || sig[i] < sig[i + j]) { ok = false; break; }
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+            bool ok = true;
+            for (int j = 1; j <= distance; j++) {
+                if (sig[i] < sig[i - j] || sig[i] < sig[i + j]) { ok = false; break; }
+>>>>>>> james
             }
             if (!ok) continue;
 
@@ -56,6 +69,9 @@ inline std::vector<int> find_peaks_prominence(const std::vector<double> &sig, in
             double right_min = sig[i];
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> james
             for (int j = i; j < n; j++) right_min = std::min(right_min, sig[j]);
             double prom = sig[i] - std::max(left_min, right_min);
             if (prom < prominence) continue;
@@ -66,6 +82,7 @@ inline std::vector<int> find_peaks_prominence(const std::vector<double> &sig, in
             if (std::abs(denom) > 1e-12)
                 frac_offset = 0.5 * (sig[i - 1] - sig[i + 1]) / denom;
             peaks.push_back((double)i + frac_offset);
+<<<<<<< HEAD
 =======
             for (int j = i; j < (int)sig.size(); j++) right_min = std::min(right_min, sig[j]);
             double prom = sig[i] - std::max(left_min, right_min);
@@ -83,6 +100,8 @@ inline std::vector<int> find_peaks_prominence(const std::vector<double> &sig, in
                 frac_offset = 0.5 * (sig[i - 1] - sig[i + 1]) / denom;
             peaks.push_back((double)i + frac_offset);
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james
         }
     }
     return peaks;
@@ -90,8 +109,11 @@ inline std::vector<int> find_peaks_prominence(const std::vector<double> &sig, in
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james
 // ---- Peak detection (negative, refined with interpolation) ----
 inline std::vector<double> find_peaks_prominence_neg(const std::vector<double> &sig, int distance, double prominence) {
     std::vector<double> peaks;
@@ -99,6 +121,7 @@ inline std::vector<double> find_peaks_prominence_neg(const std::vector<double> &
 
     for (int i = distance; i < n - distance; i++) {
         if (sig[i] < sig[i - 1] && sig[i] < sig[i + 1]) {
+<<<<<<< HEAD
 <<<<<<< HEAD
             bool ok = true;
             for (int j = 1; j <= distance; j++) {
@@ -118,6 +141,11 @@ inline std::vector<int> find_peaks_prominence_neg(const std::vector<double> &sig
             for (int j = 1; j <= distance; j++) {
                 if (sig[i] > sig[i - j] || sig[i] > sig[i + j]) { ok = false; break; }
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+            bool ok = true;
+            for (int j = 1; j <= distance; j++) {
+                if (sig[i] > sig[i - j] || sig[i] > sig[i + j]) { ok = false; break; }
+>>>>>>> james
             }
             if (!ok) continue;
 
@@ -126,6 +154,9 @@ inline std::vector<int> find_peaks_prominence_neg(const std::vector<double> &sig
             double right_max = sig[i];
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> james
             for (int j = i; j < n; j++) right_max = std::max(right_max, sig[j]);
             double prom = std::min(left_max, right_max) - sig[i];
             if (prom < prominence) continue;
@@ -136,6 +167,7 @@ inline std::vector<int> find_peaks_prominence_neg(const std::vector<double> &sig
             if (std::abs(denom) > 1e-12)
                 frac_offset = 0.5 * (sig[i - 1] - sig[i + 1]) / denom;
             peaks.push_back((double)i + frac_offset);
+<<<<<<< HEAD
 =======
             for (int j = i; j < (int)sig.size(); j++) right_max = std::max(right_max, sig[j]);
             double prom = std::min(left_max, right_max) - sig[i];
@@ -153,6 +185,8 @@ inline std::vector<int> find_peaks_prominence_neg(const std::vector<double> &sig
                 frac_offset = 0.5 * (sig[i - 1] - sig[i + 1]) / denom;
             peaks.push_back((double)i + frac_offset);
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james
         }
     }
     return peaks;
@@ -160,6 +194,9 @@ inline std::vector<int> find_peaks_prominence_neg(const std::vector<double> &sig
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> james
 // ---- Linear interpolation helper by fractional index ----
 inline double interp_at(const std::vector<double>& sig, double pos) {
     if (sig.empty()) return 0.0;
@@ -217,6 +254,7 @@ inline std::vector<double> find_all_zero_crossings(
         } else {
             // fallback to integer index if denom is zero (extremely rare)
             zeros.push_back((double)i);
+<<<<<<< HEAD
 =======
 // ---- Zero crossing detection ----
 inline std::vector<int> find_all_zero_crossings(const std::vector<double> &sig,
@@ -312,6 +350,8 @@ inline std::vector<double> find_all_zero_crossings(
             // fallback to integer index if denom is zero (extremely rare)
             zeros.push_back((double)i);
 >>>>>>> 44db27e (Initial commit with stroke analysis code)
+=======
+>>>>>>> james
         }
     }
     return zeros;
