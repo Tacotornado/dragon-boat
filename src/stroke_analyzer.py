@@ -9,7 +9,7 @@ FS = 120.0
 DT = 1.0 / FS
 
 def main():
-    workspace_root = "/Users/8identity-dev/Workspace/CSA/csa"
+    workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     raw_csv_path = os.path.join(workspace_root, "data/Canoe_xsens_dot_raw.csv")
     filt_csv_path = os.path.join(workspace_root, "reference/filtered_imu_data.csv")
     metrics_csv_path = os.path.join(workspace_root, "reference/stroke_metrics_cpp.csv")
@@ -106,14 +106,10 @@ def main():
     print("Generating interactive HTML dashboard...")
     # Prepare data for dashboard
     time_series_data = {
-        "time": (np.arange(n) * DT).tolist(),
-        "raw_accY": acc_y_raw.tolist(),
-        "filt_accY": acc_y_filt.tolist(),
-        "filt_accX": filt_df["Acc_X"].tolist(),
-        "filt_accZ": filt_df["Acc_Z"].tolist(),
-        "filt_gyrX": filt_df["Gyr_X"].tolist(),
-        "filt_gyrY": filt_df["Gyr_Y"].tolist(),
-        "filt_gyrZ": filt_df["Gyr_Z"].tolist()
+        "time_s": (np.arange(n) * DT).tolist(),
+        "acc_y_raw": acc_y_raw.tolist(),
+        "acc_y_filt": acc_y_filt.tolist(),
+        "cutoffs": filt_df["Cutoff"].tolist()
     }
     
     # Save the CSV clean result columns

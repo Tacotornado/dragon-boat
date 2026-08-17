@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 def main():
-    workspace_root = "/Users/8identity-dev/Workspace/CSA/csa"
+    workspace_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     excel_path = os.path.join(workspace_root, "data/Canoe xsens dot.xlsx")
     filtered_path = os.path.join(workspace_root, "reference/filtered_imu_data.csv")
     metrics_path = os.path.join(workspace_root, "reference/stroke_metrics_cpp.csv")
