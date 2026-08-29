@@ -71,7 +71,9 @@ int main(int argc, char* argv[]) {
             std::cout << options.help() << std::endl;
             return 0;
         }
-
+        // input and output paths, we need to make it so these can be set 
+        // from command line arguments, and we need to create the output directory 
+        // if it doesn't exist
         std::string csv_path = result["input"].as<std::string>();
         std::string RESULT_DIR = result["output"].as<std::string>();
         std::string STROKE_PLOT_DIR = RESULT_DIR + "/stroke_plots";

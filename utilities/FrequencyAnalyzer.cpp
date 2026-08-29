@@ -12,7 +12,8 @@ double FrequencyAnalyzer::estimateStrokeFrequency(const std::vector<double>& dat
 
     pocketfft::shape_t shape{n};
     pocketfft::stride_t stride{sizeof(std::complex<double>)};
-    pocketfft::c2c(shape, stride, stride, 0, true, buffer.data(), buffer.data(), 1.0);
+    pocketfft::shape_t axes{0};
+    pocketfft::c2c(shape, stride, stride, axes, true, buffer.data(), buffer.data(), 1.0);
 
     double max_val = -1.0;
     int peak_idx = 0;
