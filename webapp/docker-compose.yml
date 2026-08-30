@@ -1,0 +1,31 @@
+services:
+  stroke-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      # Set to true once engine/utilities + engine/vendor are populated and the
+      # image build reports "engine built".
+      - USE_CPP_ENGINE=${USE_CPP_ENGINE:-true}
+      - CPP_ENGINE_PATH=${CPP_ENGINE_PATH:-/app/engine/stroke_analysis}
+      - CPP_ENGINE_TIMEOUT_MS=${CPP_ENGINE_TIMEOUT_MS:-120000}
+      - ARTIFACT_DIR=/app/data/runs
+      - SAMPLE_RATE_HZ=${SAMPLE_RATE_HZ:-120}
+      - MPLBACKEND=Agg
+    volumes:
+      # Persist engine artifacts (plots, workbooks) across restarts.
+      - stroke-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/sessions"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  stroke-data:
