@@ -20,16 +20,29 @@ RUN pnpm build
 # Stage 3: C++ engine build (stroke_analysis + utilities)
 FROM debian:bookworm-slim AS engine
 WORKDIR /engine
+# xlnt is NOT packaged for Debian, so build it from source as a STATIC lib and
+# install to /usr/local. cxxopts/eigen/matplotlib-cpp/pocketfft are vendored in
+# engine/src/libs, so no -dev packages are needed for them.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential \
+      cmake \
+      git \
       python3 \
       python3-dev \
       python3-numpy \
       python3-matplotlib \
-      libxlnt-dev \
-      libcxxopts-dev \
       ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+# GCC 12 tightened transitive includes; xlnt 1.5.0 relies on <cstdint>,
+# <limits>, and <cstddef> being pulled in implicitly, so force-include them
+# across the whole build.
+RUN git clone --depth 1 --branch v1.5.0 https://github.com/tfussell/xlnt.git /tmp/xlnt \
+    && cmake -S /tmp/xlnt -B /tmp/xlnt/build \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DSTATIC=ON -DTESTS=OFF -DSAMPLES=OFF -DBENCHMARKS=OFF \
+         -DCMAKE_CXX_FLAGS="-include cstdint -include limits -include cstddef" \
+    && cmake --build /tmp/xlnt/build --target install -j "$(nproc)" \
+    && rm -rf /tmp/xlnt
 COPY engine/ ./
 # Tolerate a missing utilities/ or vendor/ drop-in: the app falls back to the
 # TypeScript path when /app/engine/stroke_analysis is absent.
@@ -46,14 +59,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # matplotlib-cpp must render headlessly inside the container.
 ENV MPLBACKEND=Agg
 
-# Runtime libraries the binary links against (python + matplotlib + xlnt).
+# Runtime libraries the binary links against. xlnt is statically linked into
+# the binary, so only the Python/matplotlib runtime is needed here.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
       python3-numpy \
       python3-matplotlib \
       wget \
-    && (apt-get install -y --no-install-recommends libxlnt1.5 \
-        || apt-get install -y --no-install-recommends libxlnt-dev) \
     && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nodejs && useradd --system --uid 1001 --gid nodejs nextjs

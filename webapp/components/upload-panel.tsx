@@ -4,11 +4,13 @@ import { useCallback, useRef, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Upload, FileText, Waves, CheckCircle2, AlertCircle } from "lucide-react"
+import type { StrokeCycle } from "@/lib/types"
 
 interface UploadPanelProps {
   onStrokesUpload: (file: File) => void
   onIMUUpload: (file: File) => void
-  dataSource: "demo" | "uploaded"
+  onEngineStrokes: (strokes: StrokeCycle[]) => void
+  hasData: boolean
   uploadMessage: string | null
   hasUploadedWaveform: boolean
 }
@@ -16,7 +18,8 @@ interface UploadPanelProps {
 export function UploadPanel({
   onStrokesUpload,
   onIMUUpload,
-  dataSource,
+  onEngineStrokes,
+  hasData,
   uploadMessage,
   hasUploadedWaveform,
 }: UploadPanelProps) {
@@ -59,6 +62,7 @@ export function UploadPanel({
           name?: string
           sampleCount?: number
           strokeCount?: number
+          cycles?: StrokeCycle[]
           engine?: { enabled: boolean; ran: boolean; error: string | null }
         } = {}
         try {
@@ -67,6 +71,11 @@ export function UploadPanel({
           result = { error: responseText || `Upload failed (${response.status})` }
         }
         if (!response.ok) throw new Error(result.error || `Upload failed (${response.status})`)
+
+        // Populate the dashboard directly from the engine's detected strokes.
+        if (result.cycles && result.cycles.length > 0) {
+          onEngineStrokes(result.cycles)
+        }
 
         const summary = [`Saved as ${result.name}`, `${result.sampleCount ?? 0} samples`]
         if (result.strokeCount) summary.push(`${result.strokeCount} strokes detected by the C++ engine`)
@@ -77,7 +86,7 @@ export function UploadPanel({
         window.alert(error instanceof Error ? error.message : "Could not save run")
       }
     },
-    [onIMUUpload]
+    [onIMUUpload, onEngineStrokes]
   )
 
   const handleDrop = useCallback(
@@ -100,17 +109,16 @@ export function UploadPanel({
           {/* Status message */}
           {uploadMessage && (
             <div
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                uploadMessage.toLowerCase().includes("error") ||
-                uploadMessage.toLowerCase().includes("missing") ||
-                uploadMessage.toLowerCase().includes("no ")
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${uploadMessage.toLowerCase().includes("error") ||
+                  uploadMessage.toLowerCase().includes("missing") ||
+                  uploadMessage.toLowerCase().includes("no ")
                   ? "bg-destructive/10 text-destructive"
                   : "bg-primary/10 text-primary"
-              }`}
+                }`}
             >
               {uploadMessage.toLowerCase().includes("error") ||
-              uploadMessage.toLowerCase().includes("missing") ||
-              uploadMessage.toLowerCase().includes("no ") ? (
+                uploadMessage.toLowerCase().includes("missing") ||
+                uploadMessage.toLowerCase().includes("no ") ? (
                 <AlertCircle className="size-4 shrink-0" />
               ) : (
                 <CheckCircle2 className="size-4 shrink-0" />
@@ -122,13 +130,12 @@ export function UploadPanel({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {/* Stroke results upload */}
             <div
-              className={`relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 transition-colors sm:gap-3 sm:p-6 ${
-                isDraggingStrokes
+              className={`relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 transition-colors sm:gap-3 sm:p-6 ${isDraggingStrokes
                   ? "border-primary bg-primary/5"
                   : strokesFileName
                     ? "border-primary/40 bg-primary/5"
                     : "border-border/50 hover:border-border"
-              }`}
+                }`}
               onDragOver={(e) => {
                 e.preventDefault()
                 setIsDraggingStrokes(true)
@@ -170,13 +177,12 @@ export function UploadPanel({
 
             {/* Raw IMU data upload (optional) */}
             <div
-              className={`relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 transition-colors sm:gap-3 sm:p-6 ${
-                isDraggingIMU
+              className={`relative flex flex-col items-center gap-2 rounded-xl border-2 border-dashed p-4 transition-colors sm:gap-3 sm:p-6 ${isDraggingIMU
                   ? "border-primary bg-primary/5"
                   : imuFileName
                     ? "border-primary/40 bg-primary/5"
                     : "border-border/50 hover:border-border"
-              }`}
+                }`}
               onDragOver={(e) => {
                 e.preventDefault()
                 setIsDraggingIMU(true)
@@ -218,12 +224,12 @@ export function UploadPanel({
           </div>
 
           {/* How-to hint - hidden on mobile */}
-          {dataSource === "demo" && (
+          {!hasData && (
             <div className="hidden rounded-lg bg-secondary/50 px-4 py-3 sm:block">
               <p className="text-xs leading-relaxed text-muted-foreground">
                 <span className="font-medium text-foreground">How it works:</span>{" "}
                 Run your C++ <span className="font-mono">stroke_analysis</span> binary locally, then upload the resulting{" "}
-                <span className="font-mono">stroke_full_cycles.csv</span> here. Currently showing demo data.
+                <span className="font-mono">stroke_full_cycles.csv</span> here to populate the dashboard.
               </p>
             </div>
           )}

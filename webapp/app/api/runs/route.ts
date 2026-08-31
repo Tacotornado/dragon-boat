@@ -141,6 +141,22 @@ export async function POST(request: Request) {
 
     if (engine.error) console.error("[v0] stroke engine:", engine.error, engine.stderr)
 
+    // Map engine cycles into the client StrokeCycle shape so the dashboard can
+    // render them directly from the raw-IMU upload (no second CSV needed).
+    const cycles = engine.cycles.map((cycle) => ({
+      StrokeID: cycle.strokeId,
+      StartZero: cycle.startZero,
+      PosPeak: cycle.posPeak,
+      MidZero: cycle.midZero,
+      NegPeak: cycle.negPeak,
+      EndZero: cycle.endZero,
+      TotalTime: cycle.totalTime,
+      TimeToPosPeak: cycle.timeToPosPeak,
+      TimeToNegPeak: cycle.timeToNegPeak,
+      Area_Positive: cycle.areaPositive,
+      Area_Negative: cycle.areaNegative,
+    }))
+
     return NextResponse.json(
       {
         id,
@@ -148,6 +164,7 @@ export async function POST(request: Request) {
         sampleCount: sampleRows.length,
         strokeCount: engine.cycles.length,
         artifactCount: engine.artifacts.length,
+        cycles,
         engine: {
           enabled: ENGINE_ENABLED,
           ran: engine.ran,

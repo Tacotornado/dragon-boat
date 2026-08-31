@@ -16,16 +16,16 @@ interface DashboardHeaderProps {
   filterTopN: number | null
   onFilterChange: (v: number | null) => void
   totalStrokes: number
-  dataSource: "demo" | "uploaded"
-  onResetToDemo: () => void
+  hasData: boolean
+  onClear: () => void
 }
 
 export function DashboardHeader({
   filterTopN,
   onFilterChange,
   totalStrokes,
-  dataSource,
-  onResetToDemo,
+  hasData,
+  onClear,
 }: DashboardHeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-border/50 bg-card/80 backdrop-blur-md">
@@ -43,10 +43,10 @@ export function DashboardHeader({
             </p>
           </div>
           <Badge
-            variant={dataSource === "uploaded" ? "default" : "secondary"}
+            variant={hasData ? "default" : "secondary"}
             className="shrink-0 text-xs"
           >
-            {dataSource === "uploaded" ? "Live" : "Demo"}
+            {hasData ? "Live" : "No Data"}
           </Badge>
         </div>
 
@@ -92,16 +92,16 @@ export function DashboardHeader({
             </Button>
           </Link>
 
-          {dataSource === "uploaded" && (
+          {hasData && (
             <Button
               variant="outline"
               size="sm"
-              onClick={onResetToDemo}
+              onClick={onClear}
               className="shrink-0 gap-1.5 text-xs sm:gap-2"
             >
               <RotateCcw className="size-3.5" />
-              <span className="hidden sm:inline">Reset to Demo</span>
-              <span className="sm:hidden">Reset</span>
+              <span className="hidden sm:inline">Clear Data</span>
+              <span className="sm:hidden">Clear</span>
             </Button>
           )}
         </div>

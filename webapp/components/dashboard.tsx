@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback, useMemo } from "react"
-import useSWR from "swr"
 import { SummaryCards } from "@/components/summary-cards"
 import { OverviewWaveform } from "@/components/overview-waveform"
 import { StrokeTable } from "@/components/stroke-table"
@@ -9,18 +8,12 @@ import { StrokeCharts } from "@/components/stroke-charts"
 import { StrokeGrid } from "@/components/stroke-grid"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { UploadPanel } from "@/components/upload-panel"
-import { Skeleton } from "@/components/ui/skeleton"
 import type { StrokeCycle, IMUDataPoint, SummaryStats, AccPhaseMetrics, DecPhaseMetrics, StrokePhaseMetrics } from "@/lib/types"
 import {
   parseStrokeCyclesCSV,
   parseRawIMUCSV,
   validateStrokeData,
 } from "@/lib/csv-parser"
-import { mockAccMetrics, mockDecMetrics, mockStrokePhaseMetrics } from "@/lib/mock-data"
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json())
-
-type DataSource = "demo" | "uploaded"
 
 export function Dashboard() {
   const [selectedStrokeId, setSelectedStrokeId] = useState<number | null>(null)
@@ -28,25 +21,14 @@ export function Dashboard() {
   const [selectedParams, setSelectedParams] = useState<string[]>([])
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null)
 
-  // Upload state
-  const [dataSource, setDataSource] = useState<DataSource>("demo")
+  // Upload state — the dashboard starts empty and only renders real data.
   const [uploadedStrokes, setUploadedStrokes] = useState<StrokeCycle[] | null>(null)
   const [uploadedWaveform, setUploadedWaveform] = useState<IMUDataPoint[] | null>(null)
   const [uploadMessage, setUploadMessage] = useState<string | null>(null)
 
-  // Demo data from API (fallback)
-  const { data: demoStrokes, isLoading: strokesLoading } = useSWR<StrokeCycle[]>(
-    "/api/strokes",
-    fetcher
-  )
-  const { data: demoWaveform, isLoading: waveformLoading } = useSWR<IMUDataPoint[]>(
-    "/api/overview",
-    fetcher
-  )
-
-  // Active data based on source
-  const strokes = dataSource === "uploaded" && uploadedStrokes ? uploadedStrokes : demoStrokes
-  const waveformData = dataSource === "uploaded" && uploadedWaveform ? uploadedWaveform : demoWaveform
+  const strokes = uploadedStrokes
+  const waveformData = uploadedWaveform
+  const hasData = uploadedStrokes !== null && uploadedWaveform !== null
 
   // Keep only complete strokes contained in the selected waveform interval.
   const visibleStrokes = useMemo(() => {
@@ -56,10 +38,10 @@ export function Dashboard() {
     )
   }, [strokes, selectedRange])
 
-  // Use mock metrics for demo, or empty for uploaded (until Excel parsing is implemented)
-  const allAccMetrics: AccPhaseMetrics[] = dataSource === "demo" ? mockAccMetrics : []
-  const allDecMetrics: DecPhaseMetrics[] = dataSource === "demo" ? mockDecMetrics : []
-  const allStrokePhaseMetrics: StrokePhaseMetrics[] = dataSource === "demo" ? mockStrokePhaseMetrics : []
+  // Phase metrics are populated once Excel parsing is wired up for uploads.
+  const allAccMetrics: AccPhaseMetrics[] = []
+  const allDecMetrics: DecPhaseMetrics[] = []
+  const allStrokePhaseMetrics: StrokePhaseMetrics[] = []
   const accMetrics = useMemo(() => allAccMetrics.filter((m) => visibleStrokes?.some((s) => s.StrokeID === m.StrokeID)), [allAccMetrics, visibleStrokes])
   const decMetrics = useMemo(() => allDecMetrics.filter((m) => visibleStrokes?.some((s) => s.StrokeID === m.StrokeID)), [allDecMetrics, visibleStrokes])
   const strokePhaseMetrics = useMemo(() => allStrokePhaseMetrics.filter((m) => visibleStrokes?.some((s) => s.StrokeID === m.StrokeID)), [allStrokePhaseMetrics, visibleStrokes])
@@ -127,7 +109,6 @@ export function Dashboard() {
         }
 
         setUploadedStrokes(parsed)
-        setDataSource("uploaded")
         setSelectedStrokeId(null)
         setFilterTopN(null)
         setUploadMessage(result.message)
@@ -151,19 +132,23 @@ export function Dashboard() {
         }
 
         setUploadedWaveform(parsed)
-        if (dataSource !== "uploaded" && uploadedStrokes) {
-          setDataSource("uploaded")
-        }
         setUploadMessage(`Loaded ${parsed.length} IMU samples for waveform display.`)
       } catch (err) {
         setUploadMessage(err instanceof Error ? err.message : "Failed to parse IMU CSV")
       }
     }
     reader.readAsText(file)
-  }, [dataSource, uploadedStrokes])
+  }, [])
 
-  const handleResetToDemo = useCallback(() => {
-    setDataSource("demo")
+  // Strokes detected server-side by the C++ engine (from the raw-IMU upload).
+  const handleEngineStrokes = useCallback((engineStrokes: StrokeCycle[]) => {
+    setUploadedStrokes(engineStrokes)
+    setSelectedStrokeId(null)
+    setFilterTopN(null)
+    setSelectedRange(null)
+  }, [])
+
+  const handleClearData = useCallback(() => {
     setUploadedStrokes(null)
     setUploadedWaveform(null)
     setUploadMessage(null)
@@ -177,25 +162,33 @@ export function Dashboard() {
     setSelectedStrokeId((prev) => (prev === id ? null : id))
   }, [])
 
-  const isLoading = dataSource === "demo" && (strokesLoading || waveformLoading)
-
-  if (isLoading) {
+  // Empty state: no data uploaded yet — show only the upload panel.
+  if (!hasData || !strokes || !waveformData || !summaryStats || !visibleStrokes) {
     return (
       <div className="flex min-h-screen flex-col bg-background">
-        <div className="border-b border-border/50 bg-card px-6 py-4">
-          <Skeleton className="h-8 w-64" />
-        </div>
-        <main className="flex-1 p-6">
+        <DashboardHeader
+          filterTopN={filterTopN}
+          onFilterChange={setFilterTopN}
+          totalStrokes={0}
+          hasData={false}
+          onClear={handleClearData}
+        />
+        <main className="flex-1 p-4 md:p-6">
           <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-24 rounded-xl" />
-              ))}
-            </div>
-            <Skeleton className="h-[340px] rounded-xl" />
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <Skeleton className="h-[500px] rounded-xl" />
-              <Skeleton className="h-[500px] rounded-xl" />
+            <UploadPanel
+              onStrokesUpload={handleStrokesUpload}
+              onIMUUpload={handleIMUUpload}
+              onEngineStrokes={handleEngineStrokes}
+              hasData={false}
+              uploadMessage={uploadMessage}
+              hasUploadedWaveform={uploadedWaveform !== null}
+            />
+            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/50 py-16 text-center">
+              <h2 className="text-lg font-semibold text-foreground">No stroke data yet</h2>
+              <p className="max-w-md text-pretty text-sm text-muted-foreground">
+                Upload a <span className="font-mono text-foreground/70">stroke_full_cycles.csv</span> file
+                to see summary stats, waveforms, and per-stroke analysis.
+              </p>
             </div>
           </div>
         </main>
@@ -203,16 +196,14 @@ export function Dashboard() {
     )
   }
 
-  if (!strokes || !waveformData || !summaryStats || !visibleStrokes) return null
-
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <DashboardHeader
         filterTopN={filterTopN}
         onFilterChange={setFilterTopN}
         totalStrokes={visibleStrokes.length}
-        dataSource={dataSource}
-        onResetToDemo={handleResetToDemo}
+        hasData={hasData}
+        onClear={handleClearData}
       />
       <main className="flex-1 p-4 md:p-6">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-6">
@@ -220,7 +211,8 @@ export function Dashboard() {
           <UploadPanel
             onStrokesUpload={handleStrokesUpload}
             onIMUUpload={handleIMUUpload}
-            dataSource={dataSource}
+            onEngineStrokes={handleEngineStrokes}
+            hasData={hasData}
             uploadMessage={uploadMessage}
             hasUploadedWaveform={uploadedWaveform !== null}
           />

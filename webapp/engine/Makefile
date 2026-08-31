@@ -1,36 +1,73 @@
-# Builds the stroke_analysis binary that the Next.js server spawns.
-#
-# Expected layout (copy these in from your C++ repo):
-#   engine/src/stroke_analysis.cpp   <- main program (already here)
-#   engine/utilities/*.cpp *.h *.hpp <- filters.cpp, metrics.cpp, filters.h,
-#                                       signal_features.h, stroke_metrics.h,
-#                                       math_utils.h, cxxopts.hpp
-#   engine/vendor/matplotlibcpp.h    <- header-only matplotlib-cpp
-#
-# Build:  make -C engine
-# Output: engine/stroke_analysis
-# Run:    engine/stroke_analysis -i input.csv -o results_dir
+# ==============================
+# Container-Ready Portable Makefile
+# Adapted from the known-working build for the engine/src/ layout.
+#   Run location (Docker): CWD = engine/  ->  `make all`
+#   Sources live under src/, vendored libs under src/libs/.
+#   Binary is emitted at engine/stroke_analysis (picked up by the Dockerfile).
+# ==============================
 
-CXX      ?= g++
-TARGET   := stroke_analysis
-SRC      := src/stroke_analysis.cpp $(wildcard utilities/*.cpp)
+CXX := g++
+CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -static-libstdc++
 
-PYTHON_INCLUDES := $(shell python3-config --includes)
-PYTHON_LIBS     := $(shell python3-config --ldflags --embed 2>/dev/null || python3-config --ldflags)
-NUMPY_INCLUDE   := $(shell python3 -c "import numpy; print(numpy.get_include())" 2>/dev/null)
+SRC_DIR := src
 
-CXXFLAGS := -std=c++17 -O2 -Iutilities -Ivendor -Isrc $(PYTHON_INCLUDES)
-ifneq ($(NUMPY_INCLUDE),)
-CXXFLAGS += -I$(NUMPY_INCLUDE)
-endif
+# --- Include Directories (vendored project libs under src/libs) ---
+# Both libs/cxxopts and libs/cxxopts/include are listed so the header resolves
+# whether or not the vendored copy uses an include/ subfolder. Missing -I dirs
+# are ignored by g++, so listing both is safe.
+INCLUDES := \
+  -I$(SRC_DIR) \
+  -I$(SRC_DIR)/utilities \
+  -I$(SRC_DIR)/libs/eigen \
+  -I$(SRC_DIR)/libs/matplotlib-cpp \
+  -I$(SRC_DIR)/libs/cxxopts \
+  -I$(SRC_DIR)/libs/cxxopts/include \
+  -I$(SRC_DIR)/libs/pocketfft \
+  -I/usr/local/include \
+  $(shell python3 -c "import numpy as c; print('-I' + c.get_include())")
 
-LDLIBS := $(PYTHON_LIBS) -lxlnt
+# --- Python Configuration (Dynamic, embed interpreter for matplotlib-cpp) ---
+PYTHON_LDFLAGS := $(shell python3-config --embed --ldflags 2>/dev/null || python3-config --ldflags)
+PYTHON_CFLAGS := $(shell python3-config --includes)
+CXXFLAGS += $(PYTHON_CFLAGS)
 
-.PHONY: all clean
+# --- Libraries and Linking ---
+# xlnt is built as a static lib into /usr/local/lib (see Dockerfile). Defining
+# XLNT_STATIC keeps its symbols non-dllimport; -L/usr/local/lib finds libxlnt.a.
+CXXFLAGS += -DXLNT_STATIC=1
+LDFLAGS := -L/usr/local/lib -lxlnt $(PYTHON_LDFLAGS)
+
+# --- Source Files and Target ---
+SRC := \
+  $(SRC_DIR)/stroke_analysis.cpp \
+  $(SRC_DIR)/utilities/filters.cpp \
+  $(SRC_DIR)/utilities/FrequencyAnalyzer.cpp
+OBJ := $(SRC:.cpp=.o)
+TARGET := stroke_analysis
+
+# ==============================
+# Rules
+# ==============================
+
 all: $(TARGET)
 
-$(TARGET): $(SRC)
-	$(CXX) $(CXXFLAGS) $(SRC) -o $(TARGET) $(LDLIBS)
+$(TARGET): $(OBJ)
+	@echo "Linking $(TARGET)..."
+	$(CXX) $(CXXFLAGS) $(OBJ) -o $@ $(LDFLAGS)
+
+%.o: %.cpp
+	@echo "Compiling $<..."
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(TARGET)
+	@echo "Cleaning build files..."
+	rm -f $(OBJ) $(TARGET)
+
+run: $(TARGET)
+	@echo "Running stroke_analysis..."
+	./$(TARGET) --input data/Canoe_xsens_dot.csv --output results
+
+debug: CXXFLAGS += -g -O0
+debug: clean all
+
+.PHONY: all clean run debug
