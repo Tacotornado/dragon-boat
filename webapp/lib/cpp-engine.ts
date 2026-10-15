@@ -59,8 +59,14 @@ function runBinary(binary: string, args: string[], cwd: string) {
   return new Promise<{ code: number | null; stdout: string; stderr: string; error?: string }>((resolve) => {
     const child = spawn(binary, args, {
       cwd,
-      // matplotlib-cpp needs a headless backend inside the container.
-      env: { ...process.env, MPLBACKEND: process.env.MPLBACKEND || "Agg" },
+      env: {
+        ...process.env,
+        // matplotlib-cpp needs a headless backend inside the container.
+        MPLBACKEND: process.env.MPLBACKEND || "Agg",
+        // Point matplotlib at a writable cache dir (the container home is not
+        // writable), avoiding the per-run temp-dir warning and slow imports.
+        MPLCONFIGDIR: process.env.MPLCONFIGDIR || join(cwd, ".mplconfig"),
+      },
     })
     let stdout = ""
     let stderr = ""

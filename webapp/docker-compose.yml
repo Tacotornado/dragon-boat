@@ -7,7 +7,7 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://neondb_owner:npg_bOU0gu1eBfAK@ep-little-shadow-b47xx4te-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require
       # Set to true once engine/utilities + engine/vendor are populated and the
       # image build reports "engine built".
       - USE_CPP_ENGINE=${USE_CPP_ENGINE:-true}

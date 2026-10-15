@@ -119,6 +119,12 @@ export default function SessionsPage() {
               </p>
             </div>
           </div>
+          <Link href="/live">
+            <Button variant="outline" className="gap-2">
+              <Radio className="size-4" />
+              Connect sensor
+            </Button>
+          </Link>
         </div>
       </header>
       
@@ -229,10 +235,15 @@ export default function SessionsPage() {
                   </p>
                   
                   <div className="flex gap-2">
-                    <Link href={`/sessions/${session.id}`} className="flex-1">
+                    <Link href={`/live?sessionId=${encodeURIComponent(session.id)}`} className="flex-1">
                       <Button variant="default" size="sm" className="w-full gap-2">
+                        <Radio className="size-3.5" />
+                        Record
+                      </Button>
+                    </Link>
+                    <Link href={`/sessions/${session.id}`}>
+                      <Button variant="outline" size="sm" aria-label={`Open ${session.name}`}>
                         <Play className="size-3.5" />
-                        {session.status === "recording" ? "View Live" : "Open"}
                       </Button>
                     </Link>
                     <Button 

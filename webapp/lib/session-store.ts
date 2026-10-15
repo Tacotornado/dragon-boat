@@ -104,6 +104,18 @@ export async function addStroke(
   return true
 }
 
+export async function replaceSessionAnalysis(
+  id: string,
+  strokes: StrokeCycle[],
+): Promise<boolean> {
+  const session = sessions.get(id)
+  if (!session) return false
+  session.strokes = strokes
+  session.strokeCount = strokes.length
+  session.updatedAt = new Date().toISOString()
+  return true
+}
+
 export async function deleteSession(id: string): Promise<boolean> {
   return sessions.delete(id)
 }

@@ -83,8 +83,8 @@ instead of failing.
 After building, verify the toolchain end-to-end before relying on uploads:
 
 ```bash
-# inside the running container
-docker compose exec web bash /app/engine/smoke-test.sh
+# inside the running container (service name is "stroke-analysis")
+docker compose exec stroke-analysis bash /app/engine/smoke-test.sh
 
 # or locally after `make -C engine`
 bash engine/smoke-test.sh
