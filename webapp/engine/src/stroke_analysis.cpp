@@ -1,4 +1,6 @@
 //stroke_analysis.cpp
+
+ // version 1.0.2
 #include <bits/stdc++.h>
 #include <filesystem>
 #include "matplotlibcpp.h"
